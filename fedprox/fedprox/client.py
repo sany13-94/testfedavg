@@ -142,6 +142,9 @@ class FederatedClient(fl.client.NumPyClient):
     def fit(self, parameters, config):
         """Train local model and extract prototypes (NumPyClient interface)."""
         try: 
+            round_number = config.get("server_round", -1)
+            start_time = time.time()
+            '''
             import random
             round_number = config.get("server_round", -1)
             simulate_delay = False
@@ -150,8 +153,9 @@ class FederatedClient(fl.client.NumPyClient):
             simulate_ids = set((config.get("simulate_stragglers") or "").split(",")) if config.get("simulate_stragglers") else set()
             simulate_delay = (uuid in simulate_ids) and (random.random() < config.get("delay_prob", 1.0))
             print(f"[Client {self.client_id}] Is straggler: {simulate_delay}")
-            start_time = time.time()
+            
             # On ne le fait que pour la première ronde pour des raisons de performance.
+            '''
             if round_number == 1 :
               print(f'=== visualize =====')
               # Il prend le client_id et le DataLoader d'entraînement pour analyser la distribution locale.
@@ -169,21 +173,22 @@ class FederatedClient(fl.client.NumPyClient):
            
             # Extract and cache prototypes after training
             #print(f"Client {self.client_id} extracting prototypes...")
-            self._extract_and_cache_prototypes(round_number)
+            #self._extract_and_cache_prototypes(round_number)
             
             training_duration = time.time() - start_time
             
             num_examples = len(self.traindata.dataset) if hasattr(self.traindata, 'dataset') else len(self.traindata)
-           
+            '''
             return  (self.get_parameters(), num_examples, {
                 "data_size": num_examples,
                 "duration": training_duration,
                      "client_cid": self.client_id,           # your logical ID
             "flower_node_id": str(self.context.node_id),   # stringify for CSV safety
             })
+            '''
            
           
-            #return self.get_parameters(self.net), len(self.traindata), {}
+            return self.get_parameters(self.net), len(self.traindata), {}
 
            
         except Exception as e:
@@ -191,7 +196,7 @@ class FederatedClient(fl.client.NumPyClient):
             import traceback
             traceback.print_exc()
             raise e
-   
+    '''
     def get_properties(self, config):
         """Send prototypes to server when requested (NumPyClient interface)."""
         
@@ -371,7 +376,7 @@ class FederatedClient(fl.client.NumPyClient):
             self.prototypes_from_last_round = None
             self.class_counts_from_last_round = None
 
-    
+    '''
     # ------------------ Helpers ------------------
     def latest_ckpt_in(self,path):
       files = sorted(glob.glob(os.path.join(path, "*.pt")))
