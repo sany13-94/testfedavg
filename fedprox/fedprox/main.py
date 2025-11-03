@@ -322,24 +322,11 @@ def get_server_fn(mlflow=None):
  """Create server function with MLflow tracking."""
  def server_fn(context: Context) -> ServerAppComponents:
     global strategy
-    if strategy=="fedavg":
-      
-      strategyi = FedAVGWithEval(
-      fraction_fit=1.0,  # Train with 50% of available clients
-      fraction_evaluate=1,  # Evaluate with all available clients
-      min_fit_clients=4,
-      min_evaluate_clients=4,
-      min_available_clients=4,
-      evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,  # Add this
-
-      on_evaluate_config_fn=get_on_evaluate_config_fn(),
-)
-      print(f'strategy ggg {strategyi}')
-    else: 
-      print(f'strategy of method {strategy}')
-      # Define stragglers
-      ground_truth_stragglers = {f'client_{i}' for i in range(2)}
-      strategyi = server.GPAFStrategy(
+   
+    print(f'strategy of method {strategy}')
+    # Define stragglers
+    ground_truth_stragglers = {f'client_{i}' for i in range(2)}
+    strategyi = server.GPAFStrategy(
         experiment_name,
         fraction_fit=1.0,  # Ensure all clients participate in training
         #fraction_evaluate=1.0,
