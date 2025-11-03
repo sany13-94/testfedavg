@@ -94,7 +94,7 @@ class FederatedClient(fl.client.NumPyClient):
         self.class_counts_from_last_round = None
         
         # Load existing prototypes if available
-        self._load_prototypes_from_disk()
+        #self._load_prototypes_from_disk()
         self.CKPT_DIR = "/kaggle/working/cluster-CDCSF/fedprox/ckpts"
 
         # Optional: if you added your previous run's "Notebook Output" via Add Data,
