@@ -421,23 +421,6 @@ def main(cfg: DictConfig) -> None:
     
     save_path = HydraConfig.get().runtime.output_dir
     
-
-    # Load saved validation data
-    ground_truth_stragglers = {f'client_{i}' for i in range(2)}
-
-    per_round_df = pd.read_csv("validation_results.csv")
-    final_df = pd.read_csv("client_participation.csv")
-    visualizer = ClusterVisualizationForConfigureFit()    
-    print("[1/3] Generating straggler detection analysis...")
-    visualizer.analyze_straggler_detection_with_ground_truth(
-            validation_df=per_round_df,
-            ground_truth_stragglers=ground_truth_stragglers,
-            save_path="straggler_validation_detailed.png"
-        )
-        
-   
-
-    #save_results_as_pickle(history, file_path=save_path, extra_results={})
     
 def data_load(cfg: DictConfig):
   trainloaders, valloaders,domain_assignment = load_datasets(
