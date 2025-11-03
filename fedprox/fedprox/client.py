@@ -143,11 +143,11 @@ class FederatedClient(fl.client.NumPyClient):
         """Train local model and extract prototypes (NumPyClient interface)."""
         try: 
             round_number = config.get("server_round", -1)
+            simulate_delay = False
             start_time = time.time()
             '''
             import random
-            round_number = config.get("server_round", -1)
-            simulate_delay = False
+            
             uuid=self.client_id
             print(f"Client {self.client_id} starting fit() for round {round_number}")
             simulate_ids = set((config.get("simulate_stragglers") or "").split(",")) if config.get("simulate_stragglers") else set()
