@@ -54,7 +54,7 @@ save_dir="feature_visualizations"
         self, server_round: int, parameters: Parameters
     ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
         """Evaluate model parameters using an evaluation function."""
-        print(f'===server evaluation=======')
+        print(f'===server evaluation======= sanaaa')
         if self.evaluate_fn is None:
             # No evaluation function provided
             return None
