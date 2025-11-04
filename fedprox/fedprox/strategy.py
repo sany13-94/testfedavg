@@ -21,6 +21,7 @@ from flwr.server.client_manager import ClientManager
 from fedprox.features_visualization import extract_features_and_labels,StructuredFeatureVisualizer
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
+from typing import Optional, Callable
 
 class FedAVGWithEval(FedAvg):
     def __init__(
@@ -34,7 +35,7 @@ class FedAVGWithEval(FedAvg):
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
           ground_truth_stragglers=None,
          total_rounds: int = 15,
-         on_fit_config_fn,
+         on_fit_config_fn: Optional[Callable[[int], dict]] = None,
         **kwargs,
     ) -> None:
      super().__init__(
@@ -44,7 +45,8 @@ class FedAVGWithEval(FedAvg):
             min_evaluate_clients=min_evaluate_clients,
             min_available_clients=min_available_clients,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
-            on_fit_config_fn=on_fit_config_fn
+            on_fit_config_fn=on_fit_config_fn,   # ✅ make sure to include this
+
             **kwargs,
         )
 

@@ -384,16 +384,7 @@ def main(cfg: DictConfig) -> None:
     
     
     device = cfg.server_device
-    def get_on_fit_config():
-        def fit_config_fn(server_round: int):
-            # resolve and convert to python dict
-            fit_config: FitConfig = OmegaConf.to_container(  # type: ignore
-                cfg.fit_config, resolve=True
-            )
-            fit_config["curr_round"] = server_round  # add round info
-            return fit_config
-
-        return fit_config_fn
+   
    
     # Start simulation
     print(f'gpu number {cfg.client_resources.num_gpus}')
