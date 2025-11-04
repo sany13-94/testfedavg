@@ -179,14 +179,7 @@ save_dir="feature_visualizations"
                   continue
             dur = float(metrics["duration"])
             prev = self.training_times.get(uuid)
-            if prev is None:
-                  ema = dur
-                  print(f"[EMA Init] {uuid}: T_c(0) = {dur:.2f}s")
-            else:
-                ema = self.alpha * dur + (1.0 - self.alpha) * prev
-                print(f"[EMA Update] {uuid}: {prev:.2f}s → {ema:.2f}s (raw: {dur:.2f}s)")
-            self.training_times[uuid] = ema
-
+           
            
             current_round_durations.append(dur)
             if cid is None or node is None:
