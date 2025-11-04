@@ -53,6 +53,14 @@ class FedAVGWithEval(FedAvg):
      self.client_participation_count = {}  # client_id -> number of times selected
 #ff
      # mappings
+     self.training_times = {}
+     self.selection_counts = {}
+     self.participated_clients = set()
+     self.client_assignments = {}
+     self.participated_clients = set()
+     self.client_assignments = {}
+     self.cluster_prototypes = {}
+     self.last_round_participants = set()
      self.min_evaluate_clients=min_evaluate_clients
      self.min_available_clients=min_available_clients
      self.best_avg_accuracy=0.0
