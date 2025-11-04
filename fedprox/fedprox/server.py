@@ -456,24 +456,23 @@ class GPAFStrategy(FedAvg):
 
 
 
-      def configure_evaluate(
+    def configure_evaluate(
       self, server_round: int, parameters: Parameters, client_manager: ClientManager
 ) -> List[Tuple[ClientProxy, EvaluateIns]]:
       
       """Configure the next round of evaluation."""
-   
-      #sample_size, min_num_clients = self.num_evaluate_clients(client_manager)
+     
+      sample_size, min_num_clients = self.num_evaluate_clients(client_manager)
       clients = client_manager.sample(
-        num_clients=self.min_available_clients, min_num_clients=self.min_evaluate_clients
+        num_clients=sample_size, min_num_clients=min_num_clients
     )
       evaluate_config = {"server_round": server_round}  # Pass the round number in config
-      # Create EvaluateIns for each client
-   
+     
+      print(f"Server sending round number: {server_round}")  # Debug print
       evaluate_ins = EvaluateIns(parameters, evaluate_config)
      
       # Return client-EvaluateIns pairs
       return [(client, evaluate_ins) for client in clients]   
-      
     def evaluate(
         self, server_round: int, parameters: Parameters
     ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
