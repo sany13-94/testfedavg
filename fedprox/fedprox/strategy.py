@@ -13,6 +13,7 @@ from flwr.common import (
 )
 import csv
 import os
+from pathlib import Path
 import base64
 import pickle
 import numpy as np
@@ -33,6 +34,7 @@ class FedAVGWithEval(FedAvg):
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
           ground_truth_stragglers=None,
          total_rounds: int = 15,
+         on_fit_config_fn,
         **kwargs,
     ) -> None:
      super().__init__(
@@ -42,6 +44,7 @@ class FedAVGWithEval(FedAvg):
             min_evaluate_clients=min_evaluate_clients,
             min_available_clients=min_available_clients,
             evaluate_metrics_aggregation_fn=evaluate_metrics_aggregation_fn,
+            on_fit_config_fn=on_fit_config_fn
             **kwargs,
         )
 
@@ -64,6 +67,24 @@ class FedAVGWithEval(FedAvg):
      self.min_evaluate_clients=min_evaluate_clients
      self.min_available_clients=min_available_clients
      self.best_avg_accuracy=0.0
+     map_path="client_id_mapping1.csv"
+
+     self.map_path = Path(map_path)
+     expected_unique=self.min_fit_clients
+     self.expected_unique = expected_unique
+     # Track what we've already recorded: (client_cid, flower_node_id)
+     self._seen= set()
+
+     # If the CSV already exists, preload seen pairs (so we don't duplicate)
+     if self.map_path.exists():
+            try:
+                import pandas as pd
+                df = pd.read_csv(self.map_path, dtype=str)
+                for _, r in df.iterrows():
+                    self._seen.add((str(r["client_cid"]), str(r["flower_node_id"])))
+            except Exception:
+                pass  # if reading fails, start fresh in memory
+         
      self.feature_visualizer =StructuredFeatureVisualizer(
         num_clients=3,  # total number of clients
         num_classes=2,           # number of classes in your dataset

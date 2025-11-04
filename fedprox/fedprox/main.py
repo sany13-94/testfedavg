@@ -306,18 +306,19 @@ def evaluate_metrics_aggregation_fn(eval_metrics: List[Tuple[int, Dict[str, floa
             "loss": sum(losses) / len(losses),
             "accuracy": sum(accuracies) / len(accuracies),
         }
-def get_on_evaluate_config_fn():
-    """Return a function which returns training configurations."""
-
-    def evaluate_config(server_round: int):
+def get_on_fit_config_fn():
+    def fit_config(server_round: int):
         print('server round sanaa'+str(server_round))
         """Return a configuration with static batch size and (local) epochs."""
         config = {
             "server_round": str(server_round),
+             "simulate_stragglers": "0,1",   # or ",".join(str(i) for i in range(2))
+
         }
         return config
 
-    return evaluate_config
+    return fit_config
+
 def get_server_fn(mlflow=None):
  """Create server function with MLflow tracking."""
  def server_fn(context: Context) -> ServerAppComponents:
@@ -334,6 +335,7 @@ def get_server_fn(mlflow=None):
         min_available_clients=4,
         ground_truth_stragglers=ground_truth_stragglers,
         total_rounds= 2,
+        on_fit_config_fn=get_on_fit_config_fn(),
       )
 
     # Configure the server for 5 rounds of training

@@ -126,8 +126,18 @@ class FederatedClient(fl.client.NumPyClient):
     def fit(self, parameters, config):
         """Train local model and extract prototypes (NumPyClient interface)."""
         try: 
+            import random
             round_number = config.get("server_round", -1)
             simulate_delay = False
+            uuid=self.client_id
+            print(f"Client {self.client_id} starting fit() for round {round_number}")
+            uuid = str(self.client_id)  # force to string
+            simulate_ids = {str(s).strip() for s in (config.get("simulate_stragglers") or "").split(",") if s}
+            simulate_delay = (uuid in simulate_ids) and (random.random() < config.get("delay_prob", 1.0))
+
+            print(f"Client simulate_ids: {simulate_ids}tttt starting fit() for round {round_number}")
+
+            print(f"[Client {self.client_id}] Is straggler: {simulate_delay}")
             start_time = time.time()
            
             if round_number == 1 :
