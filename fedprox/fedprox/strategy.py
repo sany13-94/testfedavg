@@ -50,6 +50,8 @@ class FedAVGWithEval(FedAvg):
      self.ground_truth_cids = set(ground_truth_stragglers)  # {"client_0","client_1",...}
      self.ground_truth_flower_ids = set()  # will be filled as clients appear
      self.total_rounds=total_rounds
+     self.client_participation_count = {}  # client_id -> number of times selected
+#ff
      # mappings
      self.min_evaluate_clients=min_evaluate_clients
      self.min_available_clients=min_available_clients
@@ -313,6 +315,24 @@ save_dir="feature_visualizations"
         print(f"Validation results saved to {filename}")
         return df
 
+    def save_participation_stats(self, filename="client_participation.csv"):
+        """Save participation statistics at the end of training"""
+        import pandas as pd
+        
+        # Create dataframe
+        data = []
+        for client_id, count in self.client_participation_count.items():
+            data.append({
+                'client_id': client_id,
+                'participation_count': count,
+                'participation_rate': count / self.total_rounds_completed
+            })
+        
+        df = pd.DataFrame(data)
+        df = df.sort_values('participation_count', ascending=False)
+        df.to_csv(filename, index=False)
+        print(f"Participation stats saved to {filename}")
+        return df
     def aggregate_evaluate(
         self,
         server_round: int,
