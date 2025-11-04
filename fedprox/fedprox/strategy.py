@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import base64
 import pickle
+import pandas as pd
 import numpy as np
 from flwr.server.client_manager import ClientManager
 from fedprox.features_visualization import extract_features_and_labels,StructuredFeatureVisualizer
@@ -217,7 +218,6 @@ save_dir="feature_visualizations"
         self.last_round_participants = current_participants
         self.total_rounds_completed = server_round
 
-        self._validate_straggler_predictions(server_round, results)
         
         print(f"\n[Round {server_round}] Participants: {list(current_participants)}")
         print(f"[Round {server_round}] Average raw training time: {np.mean(current_round_durations):.2f}s")
@@ -238,26 +238,7 @@ save_dir="feature_visualizations"
         # continue to next client so we still reach the mapping update
 
    
-    def _predict_stragglers_from_score(self, T_max, client_ids):
-      """Return set of predicted stragglers using s_c=1-As."""
-      # compute scores for current participants only
-      scores = {}
-      for cid in client_ids:
-        T_c = self.training_times.get(cid, 0.0)
-        As = T_max / (T_c + self.beta * T_max) if (T_c > 0 and T_max > 0) else 0.0
-        s_c = 1.0 - As
-        scores[cid] = s_c
-      """
-      if self.use_topk:
-        # Predict exactly as many as we injected (good for clean evaluation)
-        k = len(self.ground_truth_flower_ids)  # see mapping below
-        # sort by highest score (slowest)
-        predicted = set(sorted(scores, key=scores.get, reverse=True)[:k])
-      else:
-      """
-      # Thresholded prediction
-      predicted = {cid for cid, s in scores.items() if s >= self.theta}
-      return predicted, scores
+    
 
     def save_client_mapping(self):
 
@@ -277,75 +258,8 @@ save_dir="feature_visualizations"
         self.visualize_client_participation(self.client_participation_count, save_path="participation_chart.png", 
                                 )
         self.save_validation_results()
-    def _norm(self,label: str) -> str:
-      s = str(label).strip()
-      return s.replace("client_", "")   # "client_0" -> "0"
-    def _validate_straggler_predictions(self, server_round, results):
-      # participants
-      participants, round_dur = [], {}
-      for client_proxy, fit_res in results:
-        uuid = client_proxy.cid
-        participants.append(uuid)
-        if "duration" in fit_res.metrics:
-            round_dur[uuid] = float(fit_res.metrics["duration"])
-
-      # compute T_max from EMAs (assume you already updated EMA this round)
-      valid_times = [t for t in self.training_times.values() if t is not None]
-      if not valid_times:
-        return
-      T_max = float(np.mean(valid_times))
-
-      # predict (your existing code)
-      predicted_set, scores = self._predict_stragglers_from_score(T_max, participants)
-
-      # robust ground-truth check: UUID OR logical label
-      gt_uuid_set = self.cid_to_uuid    # UUIDs
-      
-      gt_logical_set = self.ground_truth_cids             # {"client_0","client_1",...}
-      gt_idx_set = {
-    int(cid.split("_", 1)[1])
-    for cid in gt_logical_set
-    if cid.startswith("client_") and cid.split("_", 1)[1].isdigit()
-}  
     
-      for uuid in participants:
-          val = self.uuid_to_cid.get(uuid)  # could be "0" or 0 or None
-          try:
-            logical_idx = int(val) if val is not None else None
-          except (TypeError, ValueError):
-            logical_idx = None
 
-          is_gt = (logical_idx is not None) and (logical_idx in gt_idx_set)
-          print(f'===== {is_gt} and {self._norm(logical_idx)} and {gt_logical_set}')
-          print(f'===== {gt_uuid_set} and {uuid} and {gt_idx_set}')
-
-          rec = {
-            "round": server_round,
-            "client_id": uuid,
-            "logical_id": logical_idx,
-            "T_c": self.training_times.get(uuid, float("nan")),
-            "T_max": T_max,
-            "s_c": scores.get(uuid, float("nan")),
-            "actual_duration": round_dur.get(uuid, float("nan")),
-            "predicted_straggler": uuid in predicted_set,
-            "ground_truth_straggler": is_gt,                         # <-- now correct
-        }
-          rec["prediction_type"] = self._classify_prediction(rec["predicted_straggler"], rec["ground_truth_straggler"])
-          self.validation_history.append(rec)
-
-            
-    #strqgglers 
-
-    def _classify_prediction(self, predicted, actual):
-        """Classify prediction type for confusion matrix"""
-        if predicted and actual:
-            return 'True Positive'  # Correctly identified straggler
-        elif not predicted and not actual:
-            return 'True Negative'  # Correctly identified fast client
-        elif predicted and not actual:
-            return 'False Positive'  # Wrongly labeled fast client as straggler
-        else:  # not predicted and actual
-            return 'False Negative'  # Missed a straggler
     
     def save_validation_results(self, filename="validation_results.csv"):
         """Save validation results"""
