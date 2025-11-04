@@ -145,17 +145,7 @@ class FederatedClient(fl.client.NumPyClient):
             round_number = config.get("server_round", -1)
             simulate_delay = False
             start_time = time.time()
-            '''
-            import random
-            
-            uuid=self.client_id
-            print(f"Client {self.client_id} starting fit() for round {round_number}")
-            simulate_ids = set((config.get("simulate_stragglers") or "").split(",")) if config.get("simulate_stragglers") else set()
-            simulate_delay = (uuid in simulate_ids) and (random.random() < config.get("delay_prob", 1.0))
-            print(f"[Client {self.client_id}] Is straggler: {simulate_delay}")
-            
-            # On ne le fait que pour la première ronde pour des raisons de performance.
-            '''
+           
             if round_number == 1 :
               print(f'=== visualize =====')
               # Il prend le client_id et le DataLoader d'entraînement pour analyser la distribution locale.
@@ -170,22 +160,11 @@ class FederatedClient(fl.client.NumPyClient):
             print(f"Client {self.client_id} starting training...")
             self.train(self.net, self.traindata, self.client_id, epochs=self.local_epochs,cfg=config, simulate_delay=simulate_delay)
             print(f"Client {self.client_id} completed training")
-           
-            # Extract and cache prototypes after training
-            #print(f"Client {self.client_id} extracting prototypes...")
-            #self._extract_and_cache_prototypes(round_number)
+         
             
             training_duration = time.time() - start_time
             
             num_examples = len(self.traindata.dataset) if hasattr(self.traindata, 'dataset') else len(self.traindata)
-            '''
-            return  (self.get_parameters(), num_examples, {
-                "data_size": num_examples,
-                "duration": training_duration,
-                     "client_cid": self.client_id,           # your logical ID
-            "flower_node_id": str(self.context.node_id),   # stringify for CSV safety
-            })
-            '''
            
           
             return self.get_parameters(self.net), len(self.traindata), {}
@@ -377,58 +356,9 @@ class FederatedClient(fl.client.NumPyClient):
             self.class_counts_from_last_round = None
 
     '''
-    # ------------------ Helpers ------------------
-    def latest_ckpt_in(self,path):
-      files = sorted(glob.glob(os.path.join(path, "*.pt")))
-      return files[-1] if files else None
 
-    def latest_ckpt(self):
-      # prefer fresh local ckpt; else fall back to prior version output (if provided)
-      ckpt = self.latest_ckpt_in(self.CKPT_DIR)
-      if ckpt:
-        return ckpt
-      if self.PERSIST_INPUT and os.path.exists(self.PERSIST_INPUT):
-        return self.latest_ckpt_in(self.PERSIST_INPUT)
-      return None
+  
 
-    def save_ckpt(self,epoch, step, model, optimizer, scaler=None, extra=None):
-      state = {
-        "epoch": int(epoch),
-        "step": int(step),
-        "model": model.state_dict(),
-        "optimizer": optimizer.state_dict(),
-        "scaler": scaler.state_dict() if scaler is not None else None,
-        "extra": extra or {},
-    }
-      path = f"{self.CKPT_DIR}/e{epoch:03d}_s{step:08d}.pt"
-      torch.save(state, path)
-
-      # rotate old checkpoints (keep only last N)
-      all_ckpts = sorted(glob.glob(os.path.join(self.CKPT_DIR, "*.pt")))
-      for p in all_ckpts[:-self.KEEP_LAST]:
-        try: os.remove(p)
-        except: pass
-      return path
-
-    def resume_if_any(self,model, optimizer=None, scaler=None, map_location="cpu"):
-      ckpt = self.latest_ckpt()
-      if not ckpt:
-        return 0, 0
-      state = torch.load(ckpt, map_location=map_location)
-      model.load_state_dict(state["model"])
-      if optimizer is not None and "optimizer" in state:
-        optimizer.load_state_dict(state["optimizer"])
-      if scaler is not None and state.get("scaler"):
-        scaler.load_state_dict(state["scaler"])
-      start_epoch = int(state.get("epoch", 0))
-      start_step  = int(state.get("step", 0))
-      print(f"[RESUME] from {ckpt} (epoch={start_epoch}, step={start_step})")
-      return start_epoch, start_step
-
-    def tidy(self):
-      gc.collect()
-      if torch.cuda.is_available():
-        torch.cuda.empty_cache()
 
     def train(self, net, trainloader, client_id, epochs,cfg, simulate_delay=False):
         """Train the network on the training set."""
@@ -500,18 +430,7 @@ class FederatedClient(fl.client.NumPyClient):
                 total += labels.size(0)
                 correct += (preds == labels).sum().item()
 
-                # ---- Logs ----
-                if global_step % PRINT_EVERY_STEPS == 0:
-                  print(f"e{epoch} s{global_step} loss={epoch_loss/max(1,(batch_idx+1)*bs):.4f}")
-
-                # ---- Periodic checkpoint ----
-                if global_step > start_step and (global_step % SAVE_EVERY_STEPS == 0):
-                  path = self.save_ckpt(epoch, global_step, net, optimizer, scaler)
-                  print(f"[CKPT] saved {path} (kept last {KEEP_LAST})")
-                  self.tidy()
-
-                global_step += 1
-
+            
             # ---- End of epoch metrics ----
             epoch_loss /= len(trainloader.dataset)
             epoch_acc = accuracy.compute().item()
@@ -528,9 +447,7 @@ class FederatedClient(fl.client.NumPyClient):
               writer.writerow([epoch+1, epoch_loss, epoch_acc])
 
             # ---- End-of-epoch checkpoint (safer resume point) ----
-            final_path = self.save_ckpt(epoch+1, global_step, net, optimizer, scaler)
-            print(f"[CKPT] epoch {epoch+1} saved to {final_path}")
-            self.tidy()
+           
 
         # Simulate delay if needed
        
