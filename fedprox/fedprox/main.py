@@ -332,7 +332,8 @@ def get_server_fn(mlflow=None):
         min_fit_clients=  4,  # Set minimum number of clients for training
         min_evaluate_clients=4,
         min_available_clients=4,
-        
+        ground_truth_stragglers=ground_truth_stragglers,
+        total_rounds= 2,
       )
 
     # Configure the server for 5 rounds of training

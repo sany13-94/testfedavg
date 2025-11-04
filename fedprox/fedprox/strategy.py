@@ -49,6 +49,7 @@ class FedAVGWithEval(FedAvg):
      self.cid_to_uuid = {}     # {"client_0": "8325..."}
      self.ground_truth_cids = set(ground_truth_stragglers)  # {"client_0","client_1",...}
      self.ground_truth_flower_ids = set()  # will be filled as clients appear
+     self.total_rounds=total_rounds
      # mappings
      self.min_evaluate_clients=min_evaluate_clients
      self.min_available_clients=min_available_clients
