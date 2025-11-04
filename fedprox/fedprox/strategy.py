@@ -239,7 +239,29 @@ save_dir="feature_visualizations"
 
    
     
+    def _fedavg_parameters(
+        self, params_list: List[List[np.ndarray]], num_samples_list: List[int]
+    ) -> List[np.ndarray]:
+        """Aggregate parameters using FedAvg (weighted averaging)."""
+        if not params_list:
+            return []
 
+        print("==== aggregation===")
+        total_samples = sum(num_samples_list)
+
+        # Initialize aggregated parameters with zeros
+        aggregated_params = [np.zeros_like(param) for param in params_list[0]]
+
+        # Weighted sum of parameters
+        for params, num_samples in zip(params_list, num_samples_list):
+            for i, param in enumerate(params):
+                aggregated_params[i] += param * num_samples
+
+        # Weighted average of parameters
+        aggregated_params = [param / total_samples for param in aggregated_params]
+
+        return aggregated_params
+    
     def save_client_mapping(self):
 
       df = pd.DataFrame([
