@@ -92,20 +92,7 @@ class FederatedClient(fl.client.NumPyClient):
         # Initialize prototype storage
         self.prototypes_from_last_round = None
         self.class_counts_from_last_round = None
-        
-        # Load existing prototypes if available
-        #self._load_prototypes_from_disk()
-        self.CKPT_DIR = "/kaggle/working/cluster-CDCSF/fedprox/ckpts"
-
-        # Optional: if you added your previous run's "Notebook Output" via Add Data,
-        # set this path to that dataset so we can resume across versions automatically.
-        # Example: "/kaggle/input/your-notebook-name/ckpts"
-        self.PERSIST_INPUT = os.environ.get("KAGGLE_PERSIST_INPUT", "").strip()  # or hardcode the path
-        self.SAVE_EVERY_STEPS  = 2000   # checkpoint cadence (increase if IO is heavy)
-        self.KEEP_LAST         = 3      # keep only last N checkpoints
-        self.PRINT_EVERY_STEPS = 100
-        os.makedirs(self.CKPT_DIR, exist_ok=True)
-        
+      
     def set_parameters(self, parameters):
         """Set model parameters from a list of NumPy arrays."""
         params_dict = zip(self.net.state_dict().keys(), parameters)
@@ -122,9 +109,6 @@ class FederatedClient(fl.client.NumPyClient):
         print(f'===evaluate client=== {type(parameters)}')
         self.set_parameters(parameters)
 
-        for batch_idx, (data, target) in enumerate(self.validdata):
-          print(f"evaluate dd Batch {batch_idx}, data shape: {data.shape}, target shape: {target.shape}")
-          break  # J
         loss, accuracy = test_gpaf(self.net, self.validdata, self.device)
       
         print(f'client id : {self.client_id} and valid accuracy is {accuracy} and valid loss is : {loss}')
@@ -521,7 +505,6 @@ cfg=None  ,
         trainloader = trainloaders[int(cid)]
 
         images, labels = next(iter(trainloader))
-        print(f"Saved sample image for client {cid} (label={images[0]})")
         # Access the original client_id stored in the dataset
         dataset_client_id = trainloader.dataset.client_id
         print(f"[Client {cid}] dataset_client_id = {dataset_client_id}")

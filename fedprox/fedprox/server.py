@@ -270,6 +270,7 @@ class GPAFStrategy(FedAvg):
         results: List[Tuple[ClientProxy, FitRes]],
         failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
     ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
+      try:
         """
         Aggregate model updates and updat
         """
@@ -328,18 +329,12 @@ class GPAFStrategy(FedAvg):
             # Collect parameters for aggregation
             clients_params_list.append(parameters_to_ndarrays(fit_res.parameters))
             num_samples_list.append(fit_res.num_examples)
-        
-        self.last_round_participants = current_participants
-        self.total_rounds_completed = server_round
+      
         
         self.last_round_participants = current_participants
         self.total_rounds_completed = server_round
 
 
-        # In aggregate_fit() - CORRECT! After clients finish training
-        for client_proxy, fit_res in results:
-          client_id = client_proxy.cid
-          
 
         
         print(f"\n[Round {server_round}] Participants: {list(current_participants)}")
@@ -355,6 +350,10 @@ class GPAFStrategy(FedAvg):
             print("="*80)
             self._save_all_results()
         return ndarrays_to_parameters(aggregated_params), {}
+      except Exception as e:
+        print(f"[aggregate_fit] Error processing client {getattr(client_proxy,'cid','?')}: {e}")
+        # continue to next client so we still reach the mapping update
+        
 
    
     #mapping clients id in stragglers  
@@ -455,10 +454,7 @@ class GPAFStrategy(FedAvg):
         return None, {"accuracy": aggregated_accuracy}
    
 
-    
-    
-    
-  
+
 
     def configure_evaluate(
       self, server_round: int, parameters: Parameters, client_manager: ClientManager
