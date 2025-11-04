@@ -151,7 +151,13 @@ class FederatedClient(fl.client.NumPyClient):
             num_examples = len(self.traindata.dataset) if hasattr(self.traindata, 'dataset') else len(self.traindata)
            
           
-            return self.get_parameters(self.net), len(self.traindata), {}
+            return self.get_parameters(self.net), len(self.traindata), {
+              "duration": training_duration,
+                     "client_cid": self.client_id,           # your logical ID
+            "flower_node_id": str(self.context.node_id),   # stringify for CSV safety
+                "logical_id": f"client_{self.client_id}",  # ensures "client_0"
+
+            }
 
            
         except Exception as e:
