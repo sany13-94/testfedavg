@@ -194,7 +194,7 @@ save_dir="feature_visualizations"
         print(f"[aggregate_fit] Error processing client {getattr(client_proxy,'cid','?')}: {e}")
         # continue to next client so we still reach the mapping update
 
-
+   
     def _predict_stragglers_from_score(self, T_max, client_ids):
       """Return set of predicted stragglers using s_c=1-As."""
       # compute scores for current participants only
