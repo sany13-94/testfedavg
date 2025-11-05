@@ -112,6 +112,7 @@ save_dir="feature_visualizations"
         num_clients=sample_size,
         min_num_clients=min_num_clients
     )
+      print(f'num clients selected: {min_num_clients}')
 
       # Step 2: Build the fit config
       fit_config = {}

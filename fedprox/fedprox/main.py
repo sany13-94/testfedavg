@@ -334,7 +334,7 @@ def get_server_fn(mlflow=None):
          min_available_clients=4,
         ground_truth_stragglers=ground_truth_stragglers,
         total_rounds= 2,
-
+min_evaluate_clients=10,
         on_fit_config_fn=get_on_fit_config_fn(),
         
 
