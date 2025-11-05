@@ -335,7 +335,6 @@ def get_server_fn(mlflow=None):
         total_rounds= 2,
         on_fit_config_fn=get_on_fit_config_fn(),
         
-     min_fit_clients=  4,  # Set minimum number of clients for training
 
       )
 
