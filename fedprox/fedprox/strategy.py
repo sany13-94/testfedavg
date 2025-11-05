@@ -58,7 +58,7 @@ class FedAVGWithEval(FedAvg):
      self.ground_truth_flower_ids = set()  # will be filled as clients appear
      self.total_rounds=total_rounds
      self.client_participation_count = {}  # client_id -> number of times selected
-#ff
+     self.min_fit_clients = min_fit_clients
      # mappings
      self.training_times = {}
      self.selection_counts = {}
@@ -103,6 +103,35 @@ save_dir="feature_visualizations"
         if self.evaluate_fn is None:
             # No evaluation function provided
             return None
+
+    def configure_fit(
+    self,
+    server_round: int,
+    parameters: Parameters,
+    client_manager: ClientManager,
+) -> List[Tuple[ClientProxy, FitIns]]:
+      # ... your existing logic to choose clients ...
+      selected_clients_cids = selected_clients_cids[:self.min_fit_clients]
+
+      # ✅ Store number of selected clients for this round
+      self.num_selected_clients = len(selected_clients_cids)
+      all_clients = client_manager.all()
+      # Build FitIns for selected clients
+      instructions = []
+      for client_id in selected_clients_cids:
+        client_proxy = all_clients[client_id]
+        client_config = {
+            "server_round": server_round,
+            "total_selected": self.num_selected_clients,   # <-- added
+            # other config entries you already pass
+            "simulate_stragglers": "0,1",
+            "delay_base_sec": 10.0,
+            "delay_jitter_sec": 3.0,
+            "delay_prob": 1.0,
+        }
+        instructions.append((client_proxy, FitIns(parameters, client_config)))
+      return instructions
+
     def configure_evaluate(
       self, server_round: int, parameters: Parameters, client_manager: ClientManager
 ) -> List[Tuple[ClientProxy, EvaluateIns]]:

@@ -313,6 +313,7 @@ def get_on_fit_config_fn():
         config = {
             "server_round": str(server_round),
              "simulate_stragglers": "0,1",   # or ",".join(str(i) for i in range(2))
+            "num_selected": 4,
 
         }
         return config
@@ -333,6 +334,9 @@ def get_server_fn(mlflow=None):
         ground_truth_stragglers=ground_truth_stragglers,
         total_rounds= 2,
         on_fit_config_fn=get_on_fit_config_fn(),
+        
+     min_fit_clients=  4,  # Set minimum number of clients for training
+
       )
 
     # Configure the server for 5 rounds of training
