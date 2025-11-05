@@ -328,7 +328,6 @@ def get_server_fn(mlflow=None):
     # Define stragglers
     ground_truth_stragglers = {f'client_{i}' for i in range(2)}
     strategyi = FedAVGWithEval(
-        fraction_fit=1.0,  # Ensure all clients participate in training
      
         min_fit_clients=  4,  # Set minimum number of clients for training
         min_evaluate_clients=4,
@@ -412,17 +411,7 @@ def main(cfg: DictConfig) -> None:
     # generate plots using the `history`
     
     save_path = HydraConfig.get().runtime.output_dir
-    # Load saved validation data
-    ground_truth_stragglers = {f'client_{i}' for i in range(2)}
-
-    per_round_df = pd.read_csv("validation_results.csv")
-    visualizer = ClusterVisualizationForConfigureFit()    
-    print("[1/3] Generating straggler detection analysis...")
-    visualizer.analyze_straggler_detection_with_ground_truth(
-            validation_df=per_round_df,
-            ground_truth_stragglers=ground_truth_stragglers,
-            save_path="straggler_validation_detailed.png"
-        )
+   
         
     
     
