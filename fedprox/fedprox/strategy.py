@@ -104,33 +104,22 @@ save_dir="feature_visualizations"
             # No evaluation function provided
             return None
 
-    def configure_fit(
-    self,
-    server_round: int,
-    parameters: Parameters,
-    client_manager: ClientManager,
-) -> List[Tuple[ClientProxy, FitIns]]:
-      # ... your existing logic to choose clients ...
-      selected_clients_cids = selected_clients_cids[:self.min_fit_clients]
+    # ---------- selection ----------
+    def configure_fit(self, server_round, parameters, client_manager):
+      # Step 1: Sample clients
+      sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
+      clients = client_manager.sample(
+        num_clients=sample_size,
+        min_num_clients=min_num_clients
+    )
 
-      # ✅ Store number of selected clients for this round
-      self.num_selected_clients = len(selected_clients_cids)
-      all_clients = client_manager.all()
-      # Build FitIns for selected clients
-      instructions = []
-      for client_id in selected_clients_cids:
-        client_proxy = all_clients[client_id]
-        client_config = {
-            "server_round": server_round,
-            "total_selected": self.num_selected_clients,   # <-- added
-            # other config entries you already pass
-            "simulate_stragglers": "0,1",
-            "delay_base_sec": 10.0,
-            "delay_jitter_sec": 3.0,
-            "delay_prob": 1.0,
-        }
-        instructions.append((client_proxy, FitIns(parameters, client_config)))
-      return instructions
+      # Step 2: Build the fit config
+      fit_config = {}
+      if self.on_fit_config_fn is not None:
+        fit_config = self.on_fit_config_fn(server_round)
+
+      # Step 3: Create FitIns for each client
+      return [(client, FitIns(parameters, fit_config)) for client in clients]
 
     def configure_evaluate(
       self, server_round: int, parameters: Parameters, client_manager: ClientManager
