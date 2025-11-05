@@ -328,10 +328,8 @@ def get_server_fn(mlflow=None):
     # Define stragglers
     ground_truth_stragglers = {f'client_{i}' for i in range(2)}
     strategyi = FedAVGWithEval(
-     
+        fraction_evaluate=1.0,
         min_fit_clients=  4,  # Set minimum number of clients for training
-        min_evaluate_clients=4,
-        min_available_clients=4,
         ground_truth_stragglers=ground_truth_stragglers,
         total_rounds= 2,
         on_fit_config_fn=get_on_fit_config_fn(),
