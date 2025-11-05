@@ -323,19 +323,9 @@ save_dir="feature_visualizations"
       
         self.save_participation_stats()
         self.visualize_client_participation(self.client_participation_count, save_path="participation_chart.png", 
-                                )
-        self.save_validation_results()
-    
+                                )    
 
     
-    def save_validation_results(self, filename="validation_results.csv"):
-        """Save validation results"""
-        
-        
-        df = pd.DataFrame(self.validation_history)
-        df.to_csv(filename, index=False)
-        print(f"Validation results saved to {filename}")
-        return df
 
     def save_participation_stats(self, filename="client_participation.csv"):
         """Save participation statistics at the end of training"""
