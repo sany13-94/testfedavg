@@ -109,7 +109,7 @@ save_dir="feature_visualizations"
       # Step 1: Sample clients
       sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
       clients = client_manager.sample(
-        num_clients=sample_size,
+        num_clients=min_num_clients,
         min_num_clients=min_num_clients
     )
       print(f'num clients selected: {min_num_clients}')
@@ -130,7 +130,7 @@ save_dir="feature_visualizations"
    
       #sample_size, min_num_clients = self.num_evaluate_clients(client_manager)
       clients = client_manager.sample(
-        num_clients=self.min_available_clients, min_num_clients=self.min_evaluate_clients
+        num_clients=10, min_num_clients=10
     )
       evaluate_config = {"server_round": server_round}  # Pass the round number in config
       # Create EvaluateIns for each client
