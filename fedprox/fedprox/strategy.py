@@ -28,7 +28,6 @@ from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 from typing import Optional, Callable
 
-from visualizeprototypes import 
 
 class FedAVGWithEval(FedAvg):
     def __init__(
