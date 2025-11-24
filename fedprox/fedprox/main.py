@@ -411,24 +411,6 @@ def main(cfg: DictConfig) -> None:
 
     # Hydra output dir (you’re already using it)
 
-    # 🔹 After simulation: build matrix and plot heatmap
-    strategy_obj = GLOBAL_FEDAVG_STRATEGY_INSTANCE
-
-    if strategy_obj is not None:
-        matrix = strategy_obj.create_selection_matrix()
-
-        # Optionally inspect matrix shape
-        print(f"Selection matrix shape: {matrix.shape}")
-
-        # Save heatmap into the Hydra run directory
-        strategy_obj.save_dir = Path(save_path)
-        strategy_obj.plot_heatmap(
-            save_name="fedavg_selection_heatmap.png",
-            cmap="viridis",
-        )
-    else:
-        print("WARNING: Strategy instance not available for visualization")
-   
         
     
     
