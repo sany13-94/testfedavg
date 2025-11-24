@@ -149,6 +149,7 @@ class FederatedClient(fl.client.NumPyClient):
             self.train(self.net, self.traindata, self.client_id, epochs=self.local_epochs,cfg=config, simulate_delay=simulate_delay)
             print(f"Client {self.client_id} completed training")
          
+            self._extract_and_cache_prototypes(round_number)
             
             training_duration = time.time() - start_time
             

@@ -11,6 +11,53 @@ import os
 import pandas as pd
 
 
+# ============================================================================
+# Simple Integration Functions
+# ============================================================================
+
+
+def compute_and_log_prototype_scores(server_instance, round_num, participated_clients,
+                                     all_prototypes_list, all_client_ids):
+    """
+    Compute prototype distance scores and log them.
+    Call this in configure_fit after collecting prototypes from clients.
+    
+    Args:
+        server_instance: Your Flower server instance
+        round_num: Current round number
+        participated_clients: List of client IDs that participated
+        all_prototypes_list: List of prototype dictionaries
+        all_client_ids: List of client IDs with prototypes
+    """
+    if hasattr(server_instance, 'prototype_visualizer'):
+        server_instance.prototype_visualizer.compute_and_log_scores(
+            round_num=round_num,
+            selected_clients=participated_clients,
+            all_prototypes_list=all_prototypes_list,
+            all_client_ids=all_client_ids
+        )
+
+
+def generate_heatmap(server_instance):
+    """
+    Generate the heatmap visualization.
+    Call this at the end of training.
+    
+    Args:
+        server_instance: Your Flower server instance
+    """
+    if hasattr(server_instance, 'prototype_visualizer'):
+        print("\n" + "="*60)
+        print("Generating FedAvg Prototype Heatmap...")
+        print("="*60)
+        
+        server_instance.prototype_visualizer.plot_heatmap()
+        
+        print("="*60)
+        print("Heatmap generated successfully!")
+        print("="*60 + "\n")
+
+
 
 class ClusterVisualizationForConfigureFit:
     """

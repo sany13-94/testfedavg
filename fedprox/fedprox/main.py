@@ -18,6 +18,8 @@ from fedprox.client import gen_client_fn
 from fedprox.dataset import load_datasets
 from fedprox.utils import LabelDistributionVisualizer,visualize_class_domain_shift
 import mlflow
+from fedprox.strategy import GLOBAL_FEDAVG_STRATEGY_INSTANCE
+
 from  mlflow.tracking import MlflowClient
 import time
 import nest_asyncio
@@ -332,6 +334,7 @@ min_evaluate_clients=10,
 
     # Configure the server for 5 rounds of training
     config = ServerConfig(num_rounds=200)
+
     return ServerAppComponents(strategy=strategyi, config=config)
  return server_fn
 
@@ -404,6 +407,26 @@ def main(cfg: DictConfig) -> None:
     # generate plots using the `history`
     
     save_path = HydraConfig.get().runtime.output_dir
+
+    # Hydra output dir (you’re already using it)
+
+    # 🔹 After simulation: build matrix and plot heatmap
+    strategy_obj = GLOBAL_FEDAVG_STRATEGY_INSTANCE
+
+    if strategy_obj is not None:
+        matrix = strategy_obj.create_selection_matrix()
+
+        # Optionally inspect matrix shape
+        print(f"Selection matrix shape: {matrix.shape}")
+
+        # Save heatmap into the Hydra run directory
+        strategy_obj.save_dir = Path(save_path)
+        strategy_obj.plot_heatmap(
+            save_name="fedavg_selection_heatmap.png",
+            cmap="viridis",
+        )
+    else:
+        print("WARNING: Strategy instance not available for visualization")
    
         
     

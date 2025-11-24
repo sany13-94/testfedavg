@@ -11,11 +11,14 @@ from flwr.common import (
     ndarrays_to_parameters,
     parameters_to_ndarrays,
 )
+import seaborn as sns
 import csv
 import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 import base64
+from collections import defaultdict
+
 import pickle
 import pandas as pd
 import numpy as np
@@ -24,6 +27,8 @@ from fedprox.features_visualization import extract_features_and_labels,Structure
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 from typing import Optional, Callable
+
+from visualizeprototypes import 
 
 class FedAVGWithEval(FedAvg):
     def __init__(
@@ -72,12 +77,20 @@ class FedAVGWithEval(FedAvg):
      self.min_available_clients=min_available_clients
      self.best_avg_accuracy=0.0
      map_path="client_id_mapping1.csv"
-
+     self.selection_history = {}              # round -> list of selected clients
+     self.prototype_scores = defaultdict(dict)  # round -> {client_id: score}     # For heatmap matrix
+     # Track selection history and scores
+     self.selection_history = defaultdict(list)  # round -> [client_ids]
+     self.prototype_scores = defaultdict(dict)   # round -> {client_id: distance_score}        
+        
      self.map_path = Path(map_path)
      expected_unique=self.min_fit_clients
      self.expected_unique = expected_unique
      # Track what we've already recorded: (client_cid, flower_node_id)
      self._seen= set()
+     # expose this instance globally so main() can access it later
+     global GLOBAL_FEDAVG_STRATEGY_INSTANCE
+     GLOBAL_FEDAVG_STRATEGY_INSTANCE = self
 
      # If the CSV already exists, preload seen pairs (so we don't duplicate)
      if self.map_path.exists():
@@ -105,22 +118,101 @@ save_dir="feature_visualizations"
             return None
 
     # ---------- selection ----------
-    def configure_fit(self, server_round, parameters, client_manager):
-      # Step 1: Sample clients
-      sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
-      clients = client_manager.sample(
+    import base64
+import pickle
+from flwr.common import FitIns, PropertiesIns
+
+def configure_fit(self, server_round, parameters, client_manager):
+    # -------------------------------------------------------
+    # 1) Sample clients (your original logic)
+    # -------------------------------------------------------
+    sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
+    clients = client_manager.sample(
         num_clients=min_num_clients,
-        min_num_clients=min_num_clients
+        min_num_clients=min_num_clients,
     )
-      print(f'num clients selected: {min_num_clients}')
+    print(f"[Server] Round {server_round} - num clients selected: {min_num_clients}")
 
-      # Step 2: Build the fit config
-      fit_config = {}
-      if self.on_fit_config_fn is not None:
-        fit_config = self.on_fit_config_fn(server_round)
+    # -------------------------------------------------------
+    # 2) Pull prototypes from selected clients (if available)
+    #    These prototypes should have been computed after the
+    #    previous round in client.fit() via _extract_and_cache_prototypes.
+    # -------------------------------------------------------
+    all_prototypes_list = []          # list[dict[class_id -> np.array or None]]
+    all_client_ids = []               # logical client indices
+    selected_clients_logical_ids = [] # for logging/selection history
 
-      # Step 3: Create FitIns for each client
-      return [(client, FitIns(parameters, fit_config)) for client in clients]
+    for client in clients:
+        try:
+            # Ask this client for its cached prototypes
+            props_ins = PropertiesIns(config={"request": "prototypes"})
+            props_res = client.get_properties(props_ins)
+
+            # Depending on your Flower version, props might be props_res.properties
+            props = getattr(props_res, "properties", props_res)
+
+            # Skip if this client has no prototypes yet (e.g., first round)
+            if "prototypes" not in props or "class_counts" not in props:
+                print(f"[Server] Round {server_round} - client {client.cid} has no prototypes")
+                continue
+
+            # Decode prototypes
+            proto_bytes = base64.b64decode(props["prototypes"])
+            prototypes = pickle.loads(proto_bytes)
+
+            all_prototypes_list.append(prototypes)
+
+            # Logical client ID (you return this from get_properties as "client_cid")
+            client_cid = props.get("client_cid", client.cid)
+            client_cid = int(client_cid)
+
+            all_client_ids.append(client_cid)
+            selected_clients_logical_ids.append(client_cid)
+
+        except Exception as e:
+            print(f"[Server] Round {server_round} - failed to decode prototypes from client {client.cid}: {e}")
+
+    # -------------------------------------------------------
+    # 3) Compute and log prototype-based scores for this round
+    # -------------------------------------------------------
+    if all_prototypes_list and all_client_ids:
+        # This uses the helper you already implemented
+        # It will fill self.selection_history[round] and
+        # self.prototype_scores[round][client_id]
+        self.compute_and_log_scores(
+            round_num=server_round,
+            selected_clients=selected_clients_logical_ids,
+            all_prototypes_list=all_prototypes_list,
+            all_client_ids=all_client_ids,
+        )
+    else:
+        print(f"[Server] Round {server_round} - no prototypes available to compute scores")
+
+    # -------------------------------------------------------
+    # 4) Build base fit config (your original hook)
+    # -------------------------------------------------------
+    base_fit_config = {}
+    if self.on_fit_config_fn is not None:
+        base_fit_config = self.on_fit_config_fn(server_round)
+
+    # -------------------------------------------------------
+    # 5) Create per-client FitIns, injecting round and prototype-extraction flag
+    # -------------------------------------------------------
+    fit_instructions = []
+    for client in clients:
+        # Copy the base config so each client gets its own dict
+        client_fit_config = dict(base_fit_config)
+
+        # Pass round so client.fit() knows which round number to tag
+        client_fit_config["round"] = server_round
+
+        # Tell clients to extract & cache prototypes after training
+        #client_fit_config["extract_prototypes"] = True
+
+        fit_instructions.append((client, FitIns(parameters, client_fit_config)))
+
+    return fit_instructions
+
 
     def configure_evaluate(
       self, server_round: int, parameters: Parameters, client_manager: ClientManager
@@ -140,6 +232,169 @@ save_dir="feature_visualizations"
       # Return client-EvaluateIns pairs
       return [(client, evaluate_ins) for client in clients]   
     
+    def compute_and_log_scores(self, round_num, selected_clients, all_prototypes_list, 
+                               all_client_ids):
+        """
+        Compute prototype distance scores for selected clients in this round.
+        
+        Args:
+            round_num: Current round number
+            selected_clients: List of selected client IDs
+            all_prototypes_list: List of prototype dictionaries from each client
+            all_client_ids: List of client IDs corresponding to prototypes
+        """
+        self.selection_history[round_num] = selected_clients
+        
+        # Compute global reference prototypes (average across all clients)
+        reference_prototypes = self._compute_global_reference(all_prototypes_list)
+        
+        # Calculate distance scores for each client
+        for client_id, prototypes in zip(all_client_ids, all_prototypes_list):
+            score = self._calculate_prototype_distance(prototypes, reference_prototypes)
+            self.prototype_scores[round_num][client_id] = score
+        
+        print(f"Round {round_num}: Computed scores for {len(selected_clients)} clients")
+        print(f"  Domain diversity (avg distance): {np.mean(list(self.prototype_scores[round_num].values())):.4f}")
+    
+    def _compute_global_reference(self, all_prototypes_list):
+        """
+        Compute global reference prototypes by averaging across all clients.
+        
+        Args:
+            all_prototypes_list: List of prototype dictionaries from all clients
+            
+        Returns:
+            dict: Global reference prototypes
+        """
+        if not all_prototypes_list:
+            return {}
+        
+        # Aggregate prototypes by class
+        class_proto_aggregates = defaultdict(list)
+        
+        for client_prototypes in all_prototypes_list:
+            for class_id, proto in client_prototypes.items():
+                if proto is not None:
+                    class_proto_aggregates[class_id].append(proto)
+        
+        # Average prototypes for each class
+        global_prototypes = {}
+        for class_id, proto_list in class_proto_aggregates.items():
+            if proto_list:
+                global_prototypes[class_id] = np.mean(np.stack(proto_list), axis=0)
+        
+        return global_prototypes
+    
+    def _calculate_prototype_distance(self, prototypes, reference_prototypes):
+        """
+        Calculate average Euclidean distance from client prototypes to reference prototypes.
+        Higher distance indicates more distinct domain characteristics.
+        
+        Args:
+            prototypes: Client's prototypes {class_id: prototype_vector}
+            reference_prototypes: Reference prototypes (global average)
+            
+        Returns:
+            float: Average distance to reference (domain distinctiveness score)
+        """
+        if not prototypes or not reference_prototypes:
+            return 0.0
+        
+        distances = []
+        
+        for class_id, proto in prototypes.items():
+            if proto is not None and class_id in reference_prototypes:
+                ref_proto = reference_prototypes[class_id]
+                if ref_proto is not None:
+                    # Euclidean distance
+                    dist = np.linalg.norm(proto - ref_proto)
+                    distances.append(dist)
+        
+        return np.mean(distances) if distances else 0.0
+    
+    def create_selection_matrix(self):
+        """
+        Create a matrix for heatmap visualization.
+        Rows: Clients, Columns: Rounds
+        Values: Prototype distance scores (0 if not selected)
+        
+        Returns:
+            numpy.ndarray: Matrix of shape (num_clients, num_rounds)
+        """
+        if not self.selection_history:
+            print("Warning: No selection history available")
+            return np.zeros((self.num_clients, 1))
+        
+        max_round = max(self.selection_history.keys())
+        matrix = np.zeros((self.num_clients, max_round))
+        
+        for round_num in range(1, max_round + 1):
+            if round_num in self.prototype_scores:
+                for client_id, score in self.prototype_scores[round_num].items():
+                    # Convert client_id to integer index
+                    client_idx = int(client_id) if isinstance(client_id, str) else client_id
+                    if 0 <= client_idx < self.num_clients:
+                        matrix[client_idx, round_num - 1] = score
+        
+        return matrix
+    
+    def plot_heatmap(self, figsize=(20, 10), cmap='viridis', save_name='fedavg_selection_heatmap.png'):
+        """
+        Create and save the prototype-based domain selection heatmap.
+        
+        Args:
+            figsize: Figure size (width, height)
+            cmap: Colormap for the heatmap
+            save_name: Filename to save the plot
+        """
+        matrix = self.create_selection_matrix()
+        
+        if matrix.shape[1] == 0:
+            print("No data to plot")
+            return
+        
+        fig, ax = plt.subplots(figsize=figsize)
+        
+        # Create heatmap
+        sns.heatmap(matrix, 
+                   cmap=cmap,
+                   cbar_kws={'label': 'Prototype distance (domain diversity)'},
+                   ax=ax,
+                   linewidths=0,
+                   rasterized=True)
+        
+        # Formatting
+        ax.set_xlabel('Round', fontsize=14, fontweight='bold')
+        ax.set_ylabel('Client ID (logical)', fontsize=14, fontweight='bold')
+        ax.set_title('Prototype-based selection pattern', fontsize=16, fontweight='bold')
+        
+        # Set y-axis labels
+        ax.set_yticks(np.arange(self.num_clients) + 0.5)
+        ax.set_yticklabels([f'Client {i}' for i in range(self.num_clients)], fontsize=10)
+        
+        # Set x-axis labels
+        num_rounds = matrix.shape[1]
+        if num_rounds > 50:
+            tick_interval = num_rounds // 20
+        elif num_rounds > 20:
+            tick_interval = 5
+        else:
+            tick_interval = 1
+            
+        x_ticks = np.arange(0, num_rounds, tick_interval)
+        ax.set_xticks(x_ticks + 0.5)
+        ax.set_xticklabels([str(i + 1) for i in x_ticks], rotation=90, fontsize=8)
+        
+        plt.tight_layout()
+        
+        # Save figure
+        save_path = self.save_dir / save_name
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"Heatmap saved to: {save_path}")
+        
+        plt.close()
+
+
     def _append_rows(self, rows: List[dict]) -> None:
         if not rows:
             return
@@ -364,6 +619,8 @@ save_dir="feature_visualizations"
         df.to_csv(filename, index=False)
         print(f"Participation stats saved to {filename}")
         return df
+
+        
     def aggregate_evaluate(
         self,
         server_round: int,
