@@ -40,7 +40,7 @@ from flwr.common import (
     parameters_to_ndarrays,
      GetPropertiesIns, GetPropertiesRes
 )
-
+GLOBAL_FEDAVG_STRATEGY_INSTANCE = None
 class FedAVGWithEval(FedAvg):
     def __init__(
         self,
