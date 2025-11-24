@@ -430,7 +430,7 @@ save_dir="feature_visualizations"
         # Save figure
         #save_path = self.save_dir / save_name
         plt.savefig(self.save_dir, dpi=300, bbox_inches='tight')
-        print(f"Heatmap saved to: {save_path}")
+        print(f"Heatmap saved to: {self.save_dir}")
         
         plt.close()
 
