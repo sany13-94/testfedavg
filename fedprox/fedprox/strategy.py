@@ -378,61 +378,143 @@ save_dir="feature_visualizations"
         return matrix
     
     def plot_heatmap(self, figsize=(20, 10), cmap='viridis', save_name='fedavg_selection_heatmap.png'):
-        """
-        Create and save the prototype-based domain selection heatmap.
-        
-        Args:
-            figsize: Figure size (width, height)
-            cmap: Colormap for the heatmap
-            save_name: Filename to save the plot
-        """
-        print(f'==== visualization heatmap ====')
-        matrix = self.create_selection_matrix()
-        
-        if matrix.shape[1] == 0:
-            print("No data to plot")
-            return
-        
-        fig, ax = plt.subplots(figsize=figsize)
-        
-        # Create heatmap
-        sns.heatmap(matrix, 
-                   cmap=cmap,
-                   cbar_kws={'label': 'Prototype distance (domain diversity)'},
-                   ax=ax,
-                   linewidths=0,
-                   rasterized=True)
-        
-        # Formatting
-        ax.set_xlabel('Round', fontsize=14, fontweight='bold')
-        ax.set_ylabel('Client ID (logical)', fontsize=14, fontweight='bold')
-        ax.set_title('Prototype-based selection pattern', fontsize=16, fontweight='bold')
-        
-        # Set y-axis labels
-        ax.set_yticks(np.arange(self.num_clients) + 0.5)
-        ax.set_yticklabels([f'Client {i}' for i in range(self.num_clients)], fontsize=10)
-        
-        # Set x-axis labels
-        num_rounds = matrix.shape[1]
-        if num_rounds > 50:
-            tick_interval = num_rounds // 20
-        elif num_rounds > 20:
-            tick_interval = 5
-        else:
-            tick_interval = 1
-            
-        x_ticks = np.arange(0, num_rounds, tick_interval)
-        ax.set_xticks(x_ticks + 0.5)
-        ax.set_xticklabels([str(i + 1) for i in x_ticks], rotation=90, fontsize=8)
-        
-        plt.tight_layout()
-        
-        # Save figure
-        #save_path = self.save_dir / save_name
-        plt.savefig(self.save_dir, dpi=300, bbox_inches='tight')
-        print(f"Heatmap saved to: {self.save_dir}")
-        
-        plt.close()
+   
+      print(f'==== Visualization Heatmap ====')
+    
+      matrix = self.create_selection_matrix()
+    
+      if matrix.shape[1] == 0:
+        print("No data to plot")
+        return
+    
+      num_rounds = matrix.shape[1]
+      num_clients = matrix.shape[0]
+    
+      # Adjust figure size based on data dimensions
+      figsize = (max(16, min(24, num_rounds * 0.08)), 
+               max(8, min(14, num_clients * 0.4)))
+    
+      # Create figure with better DPI
+      fig, ax = plt.subplots(figsize=figsize, dpi=100)
+    
+      # Enhanced heatmap with better visual settings
+      im = sns.heatmap(
+        matrix, 
+        cmap=cmap,
+        cbar_kws={
+            'label': 'Prototype score',
+            'pad': 0.02,
+            'aspect': 30,
+            'shrink': 0.8
+        },
+        ax=ax,
+        linewidths=0,
+        rasterized=True,
+        square=False,
+        xticklabels=False,  # We'll set custom labels
+        yticklabels=False   # We'll set custom labels
+    )
+    
+      # Enhance colorbar
+      cbar = im.collections[0].colorbar
+      cbar.ax.tick_params(labelsize=11)
+      cbar.set_label('Prototype score', fontsize=12, weight='bold')
+    
+      # Set title with better styling
+      ax.set_title(
+        'Prototype-based selection pattern',
+        fontsize=18,
+        fontweight='bold',
+        pad=20
+    )
+    
+      # Y-AXIS (Clients) - Enhanced formatting
+      ax.set_ylabel('Client ID (logical)', fontsize=14, fontweight='bold', labelpad=10)
+    
+      # Set y-ticks at center of each cell
+      y_positions = np.arange(num_clients) + 0.5
+      ax.set_yticks(y_positions)
+    
+      # Create clean y-axis labels
+      y_labels = [f'Client {i}' for i in range(num_clients)]
+      ax.set_yticklabels(
+        y_labels,
+        fontsize=10,
+        rotation=0,
+        va='center'
+    )
+    
+      # X-AXIS (Rounds) - Enhanced formatting with intelligent tick placement
+      ax.set_xlabel('Round', fontsize=14, fontweight='bold', labelpad=10)
+    
+      # Intelligent x-tick placement based on number of rounds
+      if num_rounds <= 20:
+        tick_interval = 1
+        rotation = 45
+      elif num_rounds <= 50:
+        tick_interval = 2
+        rotation = 45
+      elif num_rounds <= 100:
+        tick_interval = 5
+        rotation = 60
+      elif num_rounds <= 200:
+        tick_interval = 10
+        rotation = 70
+      else:
+        tick_interval = max(10, num_rounds // 30)
+        rotation = 80
+    
+      # Generate tick positions
+      x_tick_positions = np.arange(0, num_rounds, tick_interval)
+    
+      # Set x-ticks at center of cells
+      ax.set_xticks(x_tick_positions + 0.5)
+    
+      # Create round labels (1-indexed for users)
+      x_labels = [str(pos + 1) for pos in x_tick_positions]
+      ax.set_xticklabels(
+        x_labels,
+        fontsize=9,
+        rotation=rotation,
+        ha='right',
+        rotation_mode='anchor'
+    )
+    
+      # Add subtle grid for better readability (optional)
+      # ax.grid(False)  # Remove seaborn default grid if any
+    
+      # Improve layout
+      plt.tight_layout()
+    
+      # Add subtle border around the heatmap
+      for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(0.5)
+        spine.set_color('gray')
+    
+      # Save figure with high quality
+      save_path = self.save_dir / save_name
+      plt.savefig(
+        save_path,
+        dpi=300,
+        bbox_inches='tight',
+        facecolor='white',
+        edgecolor='none'
+    )
+    
+      print(f"Heatmap saved to: {save_path}")
+    
+      # Print statistics
+      non_zero_values = matrix[matrix > 0]
+      if len(non_zero_values) > 0:
+        print(f"\nHeatmap Statistics:")
+        print(f"  Total selections: {len(non_zero_values)}")
+        print(f"  Score range: [{non_zero_values.min():.4f}, {non_zero_values.max():.4f}]")
+        print(f"  Mean score: {non_zero_values.mean():.4f}")
+        print(f"  Std deviation: {non_zero_values.std():.4f}")
+    
+      plt.close(fig)
+
 
 
     def _append_rows(self, rows: List[dict]) -> None:
