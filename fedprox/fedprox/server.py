@@ -123,8 +123,7 @@ class GPAFStrategy(FedAvg):
 
         # Validation tracking
         self.validation_history = []  # Track predictions vs ground truth per round
-        
-       
+               
         true_domain_labels = np.array([0]*5 + [1]*5 + [2]*4 + [0]*1)  # Adjust to your setup
         self.visualizer = ClusterVisualizationForConfigureFit(
             save_dir="./clustering_visualizations",
@@ -334,8 +333,6 @@ class GPAFStrategy(FedAvg):
         self.last_round_participants = current_participants
         self.total_rounds_completed = server_round
 
-
-
         
         print(f"\n[Round {server_round}] Participants: {list(current_participants)}")
         print(f"[Round {server_round}] Average raw training time: {np.mean(current_round_durations):.2f}s")
@@ -354,7 +351,6 @@ class GPAFStrategy(FedAvg):
         print(f"[aggregate_fit] Error processing client {getattr(client_proxy,'cid','?')}: {e}")
         # continue to next client so we still reach the mapping update
         
-
    
     #mapping clients id in stragglers  
     def save_client_mapping(self):
@@ -453,7 +449,6 @@ class GPAFStrategy(FedAvg):
             
         return None, {"accuracy": aggregated_accuracy}
    
-
 
 
     def configure_evaluate(

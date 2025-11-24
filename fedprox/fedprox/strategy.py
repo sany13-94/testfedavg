@@ -126,8 +126,6 @@ save_dir="feature_visualizations"
             # No evaluation function provided
             return None
 
-
-
     def configure_fit(self, server_round, parameters, client_manager):
       
       sample_size, min_num_clients = self.num_fit_clients(
@@ -538,6 +536,18 @@ save_dir="feature_visualizations"
             print(f"[Round {server_round}] TRAINING COMPLETED - Auto-saving results...")
             print("="*80)
             self._save_all_results()
+
+            matrix = self.create_selection_matrix()
+
+            # Optionally inspect matrix shape
+            print(f"Selection matrix shape: {matrix.shape}")
+
+            # Save heatmap into the Hydra run directory
+            
+            self.plot_heatmap(
+            save_name="fedavg_selection_heatmap.png",
+            cmap="viridis",
+        )
         return ndarrays_to_parameters(aggregated_params), {}
 
       except Exception as e:
