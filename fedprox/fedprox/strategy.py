@@ -130,83 +130,143 @@ save_dir="feature_visualizations"
 
  
 
+    import base64
+import pickle
+import numpy as np
+from pathlib import Path
+from collections import defaultdict
+from flwr.server.strategy import FedAvg
+from flwr.common import FitIns
+
+
+class FedAVGWithEval(FedAvg):
+    def __init__(self, num_clients, save_dir=".", **kwargs):
+        super().__init__(**kwargs)
+        self.num_clients = num_clients
+        self.save_dir = Path(save_dir)
+        self.selection_history = {}                 # round -> [client_ids]
+        self.prototype_scores = defaultdict(dict)   # round -> {client_id: score}
+
+    # -----------------------------------------------------------
+    # Your other methods:
+    #   compute_and_log_scores
+    #   _compute_global_reference
+    #   _calculate_prototype_distance
+    #   create_selection_matrix
+    #   plot_heatmap
+    # -----------------------------------------------------------
+
     def configure_fit(self, server_round, parameters, client_manager):
-  
-      sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
-      clients = client_manager.sample(
-        num_clients=min_num_clients,
-        min_num_clients=min_num_clients,
-    )
-      print(f"[Server] Round {server_round} - num clients selected: {min_num_clients}")
+        # -------------------------------------------------------
+        # 1) Sample clients (your original logic)
+        # -------------------------------------------------------
+        sample_size, min_num_clients = self.num_fit_clients(
+            client_manager.num_available()
+        )
+        clients = client_manager.sample(
+            num_clients=min_num_clients,
+            min_num_clients=min_num_clients,
+        )
+        print(f"[Server] Round {server_round} - num clients selected: {min_num_clients}")
 
-   
-      all_prototypes_list = []          # list[dict[class_id -> np.array or None]]
-      all_client_ids = []               # logical client indices
-      selected_clients_logical_ids = [] # for logging/selection history
+        # -------------------------------------------------------
+        # 2) Collect prototypes from selected clients (if available)
+        #    These prototypes were computed after the previous round
+        #    in client.fit() via _extract_and_cache_prototypes.
+        # -------------------------------------------------------
+        all_prototypes_list = []
+        all_client_ids = []
+        selected_clients_logical_ids = []
 
-      for client in clients:
-        try:
-            # Ask this client for its cached prototypes
-            props_ins = PropertiesIns(config={"request": "prototypes"})
-            props_res = client.get_properties(props_ins)
+        for client in clients:
+            try:
+                # IMPORTANT:
+                #   Your client.get_properties(self, config) expects a plain dict,
+                #   NOT PropertiesIns or GetPropertiesIns.
+                props = client.get_properties({"request": "prototypes"})
 
-            # Depending on your Flower version, props might be props_res.properties
-            props = getattr(props_res, "properties", props_res)
+                if not isinstance(props, dict):
+                    print(
+                        f"[Server] Round {server_round} - "
+                        f"client {client.cid} returned non-dict props ({type(props)}), skipping"
+                    )
+                    continue
 
-            # Skip if this client has no prototypes yet (e.g., first round)
-            if "prototypes" not in props or "class_counts" not in props:
-                print(f"[Server] Round {server_round} - client {client.cid} has no prototypes")
+                # If this client has no prototypes yet (e.g., round 1), skip
+                if "prototypes" not in props or "class_counts" not in props:
+                    print(
+                        f"[Server] Round {server_round} - "
+                        f"client {client.cid} has no prototypes, skipping"
+                    )
+                    continue
+
+                # Decode prototypes
+                prototypes_encoded = props["prototypes"]
+                proto_bytes = base64.b64decode(prototypes_encoded)
+                prototypes = pickle.loads(proto_bytes)
+
+                if not isinstance(prototypes, dict):
+                    print(
+                        f"[Server] Round {server_round} - "
+                        f"client {client.cid} prototypes not a dict, skipping"
+                    )
+                    continue
+
+                all_prototypes_list.append(prototypes)
+
+                # Logical client ID (you return this from get_properties as "client_cid")
+                client_cid = props.get("client_cid", client.cid)
+                try:
+                    client_cid_int = int(client_cid)
+                except Exception:
+                    client_cid_int = client_cid
+
+                all_client_ids.append(client_cid_int)
+                selected_clients_logical_ids.append(client_cid_int)
+
+            except Exception as e:
+                print(
+                    f"[Server] Round {server_round} - error getting prototypes from client {client.cid}: {e}"
+                )
                 continue
 
-            # Decode prototypes
-            proto_bytes = base64.b64decode(props["prototypes"])
-            prototypes = pickle.loads(proto_bytes)
+        # -------------------------------------------------------
+        # 3) Compute and log prototype-based scores for this round
+        # -------------------------------------------------------
+        if all_prototypes_list and all_client_ids:
+            self.compute_and_log_scores(
+                round_num=server_round,
+                selected_clients=selected_clients_logical_ids,
+                all_prototypes_list=all_prototypes_list,
+                all_client_ids=all_client_ids,
+            )
+        else:
+            print(
+                f"[Server] Round {server_round} - "
+                "no prototypes collected, skipping score computation"
+            )
 
-            all_prototypes_list.append(prototypes)
+        # -------------------------------------------------------
+        # 4) Build the base fit config (from your on_fit_config_fn)
+        # -------------------------------------------------------
+        fit_config = {}
+        if self.on_fit_config_fn is not None:
+            fit_config = self.on_fit_config_fn(server_round)
 
-            # Logical client ID (you return this from get_properties as "client_cid")
-            client_cid = props.get("client_cid", client.cid)
-            client_cid = int(client_cid)
+        # -------------------------------------------------------
+        # 5) Create FitIns for each client
+        #    - include 'round' and 'extract_prototypes' keys so
+        #      client.fit() knows to compute new prototypes
+        # -------------------------------------------------------
+        fit_instructions = []
+        for client in clients:
+            client_fit_config = dict(fit_config)
+            client_fit_config["round"] = server_round
+            client_fit_config["extract_prototypes"] = True
 
-            all_client_ids.append(client_cid)
-            selected_clients_logical_ids.append(client_cid)
+            fit_instructions.append((client, FitIns(parameters, client_fit_config)))
 
-        except Exception as e:
-            print(f"[Server] Round {server_round} - failed to decode prototypes from client {client.cid}: {e}")
-
-  
-      if all_prototypes_list and all_client_ids:
-        # This uses the helper you already implemented
-        # It will fill self.selection_history[round] and
-        # self.prototype_scores[round][client_id]
-        self.compute_and_log_scores(
-            round_num=server_round,
-            selected_clients=selected_clients_logical_ids,
-            all_prototypes_list=all_prototypes_list,
-            all_client_ids=all_client_ids,
-        )
-      else:
-        print(f"[Server] Round {server_round} - no prototypes available to compute scores")
-
-   
-      base_fit_config = {}
-      if self.on_fit_config_fn is not None:
-        base_fit_config = self.on_fit_config_fn(server_round)
-
-      fit_instructions = []
-      for client in clients:
-        # Copy the base config so each client gets its own dict
-        client_fit_config = dict(base_fit_config)
-
-        # Pass round so client.fit() knows which round number to tag
-        client_fit_config["round"] = server_round
-
-        # Tell clients to extract & cache prototypes after training
-        #client_fit_config["extract_prototypes"] = True
-
-        fit_instructions.append((client, FitIns(parameters, client_fit_config)))
-
-      return fit_instructions
+        return fit_instructions
 
 
     def configure_evaluate(
