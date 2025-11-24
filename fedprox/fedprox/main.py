@@ -411,8 +411,7 @@ def main(cfg: DictConfig) -> None:
 
     # Hydra output dir (you’re already using it)
 
-        
-    
+      
     
 def data_load(cfg: DictConfig):
   trainloaders, valloaders,domain_assignment = load_datasets(

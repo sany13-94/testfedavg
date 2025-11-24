@@ -91,7 +91,7 @@ class FedAVGWithEval(FedAvg):
      # Track selection history and scores
      self.selection_history = defaultdict(list)  # round -> [client_ids]
      self.prototype_scores = defaultdict(dict)   # round -> {client_id: distance_score}        
-        
+     self.num_clients=20
      self.map_path = Path(map_path)
      expected_unique=self.min_fit_clients
      self.expected_unique = expected_unique
