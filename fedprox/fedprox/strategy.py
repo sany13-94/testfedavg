@@ -128,33 +128,7 @@ save_dir="feature_visualizations"
             # No evaluation function provided
             return None
 
- 
 
-    import base64
-import pickle
-import numpy as np
-from pathlib import Path
-from collections import defaultdict
-from flwr.server.strategy import FedAvg
-from flwr.common import FitIns
-
-
-class FedAVGWithEval(FedAvg):
-    def __init__(self, num_clients, save_dir=".", **kwargs):
-        super().__init__(**kwargs)
-        self.num_clients = num_clients
-        self.save_dir = Path(save_dir)
-        self.selection_history = {}                 # round -> [client_ids]
-        self.prototype_scores = defaultdict(dict)   # round -> {client_id: score}
-
-    # -----------------------------------------------------------
-    # Your other methods:
-    #   compute_and_log_scores
-    #   _compute_global_reference
-    #   _calculate_prototype_distance
-    #   create_selection_matrix
-    #   plot_heatmap
-    # -----------------------------------------------------------
 
     def configure_fit(self, server_round, parameters, client_manager):
         # -------------------------------------------------------
