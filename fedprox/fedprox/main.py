@@ -122,17 +122,7 @@ def visualize_client_participation(participation_dict, save_path="participation_
       plt.show()
 
 def visualize_from_train_loaders(train_loaders, k=15, d=3, image_idx=0):
-    """
-    Visualize the SAME batch index from representative clients across all domains.
-    Uses actual preprocessed data from train loaders (with domain shift + augmentation).
-    
-    Args:
-        train_loaders: List of DataLoader objects from make_pathmnist_clients_with_domains
-        k: Total number of clients
-        d: Number of training domains
-        image_idx: Index within the batch to visualize
-    """
-    
+   
     num_train_clients = k - 1
     clients_per_domain = num_train_clients // d
     

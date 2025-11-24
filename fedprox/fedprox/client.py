@@ -116,13 +116,7 @@ class FederatedClient(fl.client.NumPyClient):
         "cid": self.client_id  # ✅ send local client id to server
 
         }
-
-   #viusalize client pixels intensities to visualize the domain shift
-    # =======================================================
-    # NOUVELLES FONCTIONS DE VISUALISATION DE DISTRIBUTION
-    # =======================================================
-
-    
+ 
     def fit(self, parameters, config):
         """Train local model and extract prototypes (NumPyClient interface)."""
         try: 
@@ -175,7 +169,9 @@ class FederatedClient(fl.client.NumPyClient):
             import traceback
             traceback.print_exc()
             raise e
-    '''
+
+
+
     def get_properties(self, config):
         """Send prototypes to server when requested (NumPyClient interface)."""
         
@@ -278,19 +274,7 @@ class FederatedClient(fl.client.NumPyClient):
                 # Handle missing classes with numpy zeros
                 if embedding_dim is not None:
                     prototypes[class_id] = None
-                """
-                elif len(class_embeddings) > 0:
-                    # Get dimension from any existing embedding
-                    sample_embedding = next(iter(class_embeddings.values()))[0]
-                    prototypes[class_id] = None
-                    if embedding_dim is None:
-                        embedding_dim = sample_embedding.shape[0]
                 
-                else:
-                    print(f"ERROR: Client {self.client_id} - No embeddings found!")
-                    return
-                """
-        
         # Cache prototypes and class counts IN MEMORY
         self.prototypes_from_last_round = prototypes
         self.class_counts_from_last_round = dict(class_counts)
@@ -309,12 +293,7 @@ class FederatedClient(fl.client.NumPyClient):
         
         print(f"Client {self.client_id} - POST-SAVE verification:")
         print(f"  - has_prototypes: {has_prototypes}")
-        print(f"  - has_class_counts: {has_class_counts}")
-        print(f"  - prototypes_not_none: {prototypes_not_none}")
-        print(f"  - counts_not_none: {counts_not_none}")
-        print(f"  - prototype file exists: {self.prototype_file.exists()}")
-        print(f"  - counts file exists: {self.counts_file.exists()}")
-
+      
     def _save_prototypes_to_disk(self):
         """Save prototypes and class counts to disk for persistence."""
         try:
@@ -354,11 +333,6 @@ class FederatedClient(fl.client.NumPyClient):
             print(f"ERROR: Client {self.client_id} - Failed to load prototypes: {e}")
             self.prototypes_from_last_round = None
             self.class_counts_from_last_round = None
-
-    '''
-
-  
-
 
     def train(self, net, trainloader, client_id, epochs,cfg, simulate_delay=False):
         """Train the network on the training set."""
