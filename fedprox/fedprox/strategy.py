@@ -27,7 +27,19 @@ from fedprox.features_visualization import extract_features_and_labels,Structure
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 from typing import Optional, Callable
-
+from flwr.common import (
+    EvaluateIns,
+    EvaluateRes,
+    FitIns,
+    FitRes,
+    MetricsAggregationFn,
+    NDArrays,
+    Parameters,
+    Scalar,
+    ndarrays_to_parameters,
+    parameters_to_ndarrays,
+     GetPropertiesIns, GetPropertiesRes
+)
 
 class FedAVGWithEval(FedAvg):
     def __init__(
@@ -116,32 +128,23 @@ save_dir="feature_visualizations"
             # No evaluation function provided
             return None
 
-    # ---------- selection ----------
-    import base64
-import pickle
-from flwr.common import FitIns, PropertiesIns
+ 
 
-def configure_fit(self, server_round, parameters, client_manager):
-    # -------------------------------------------------------
-    # 1) Sample clients (your original logic)
-    # -------------------------------------------------------
-    sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
-    clients = client_manager.sample(
+    def configure_fit(self, server_round, parameters, client_manager):
+  
+      sample_size, min_num_clients = self.num_fit_clients(client_manager.num_available())
+      clients = client_manager.sample(
         num_clients=min_num_clients,
         min_num_clients=min_num_clients,
     )
-    print(f"[Server] Round {server_round} - num clients selected: {min_num_clients}")
+      print(f"[Server] Round {server_round} - num clients selected: {min_num_clients}")
 
-    # -------------------------------------------------------
-    # 2) Pull prototypes from selected clients (if available)
-    #    These prototypes should have been computed after the
-    #    previous round in client.fit() via _extract_and_cache_prototypes.
-    # -------------------------------------------------------
-    all_prototypes_list = []          # list[dict[class_id -> np.array or None]]
-    all_client_ids = []               # logical client indices
-    selected_clients_logical_ids = [] # for logging/selection history
+   
+      all_prototypes_list = []          # list[dict[class_id -> np.array or None]]
+      all_client_ids = []               # logical client indices
+      selected_clients_logical_ids = [] # for logging/selection history
 
-    for client in clients:
+      for client in clients:
         try:
             # Ask this client for its cached prototypes
             props_ins = PropertiesIns(config={"request": "prototypes"})
@@ -171,10 +174,8 @@ def configure_fit(self, server_round, parameters, client_manager):
         except Exception as e:
             print(f"[Server] Round {server_round} - failed to decode prototypes from client {client.cid}: {e}")
 
-    # -------------------------------------------------------
-    # 3) Compute and log prototype-based scores for this round
-    # -------------------------------------------------------
-    if all_prototypes_list and all_client_ids:
+  
+      if all_prototypes_list and all_client_ids:
         # This uses the helper you already implemented
         # It will fill self.selection_history[round] and
         # self.prototype_scores[round][client_id]
@@ -184,21 +185,16 @@ def configure_fit(self, server_round, parameters, client_manager):
             all_prototypes_list=all_prototypes_list,
             all_client_ids=all_client_ids,
         )
-    else:
+      else:
         print(f"[Server] Round {server_round} - no prototypes available to compute scores")
 
-    # -------------------------------------------------------
-    # 4) Build base fit config (your original hook)
-    # -------------------------------------------------------
-    base_fit_config = {}
-    if self.on_fit_config_fn is not None:
+   
+      base_fit_config = {}
+      if self.on_fit_config_fn is not None:
         base_fit_config = self.on_fit_config_fn(server_round)
 
-    # -------------------------------------------------------
-    # 5) Create per-client FitIns, injecting round and prototype-extraction flag
-    # -------------------------------------------------------
-    fit_instructions = []
-    for client in clients:
+      fit_instructions = []
+      for client in clients:
         # Copy the base config so each client gets its own dict
         client_fit_config = dict(base_fit_config)
 
@@ -210,7 +206,7 @@ def configure_fit(self, server_round, parameters, client_manager):
 
         fit_instructions.append((client, FitIns(parameters, client_fit_config)))
 
-    return fit_instructions
+      return fit_instructions
 
 
     def configure_evaluate(
