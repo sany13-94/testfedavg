@@ -493,7 +493,7 @@ save_dir="feature_visualizations"
         spine.set_color('gray')
     
       # Save figure with high quality
-      save_path = self.save_dir / save_name
+      save_path = self.save_dir 
       plt.savefig(
         save_path,
         dpi=300,
