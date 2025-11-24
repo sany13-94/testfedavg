@@ -88,8 +88,6 @@ class FedAVGWithEval(FedAvg):
      self.min_available_clients=min_available_clients
      self.best_avg_accuracy=0.0
      map_path="client_id_mapping1.csv"
-     self.selection_history = {}              # round -> list of selected clients
-     self.prototype_scores = defaultdict(dict)  # round -> {client_id: score}     # For heatmap matrix
      # Track selection history and scores
      self.selection_history = defaultdict(list)  # round -> [client_ids]
      self.prototype_scores = defaultdict(dict)   # round -> {client_id: distance_score}        
@@ -387,6 +385,7 @@ save_dir="feature_visualizations"
             cmap: Colormap for the heatmap
             save_name: Filename to save the plot
         """
+        print(f'==== visualization heatmap ====')
         matrix = self.create_selection_matrix()
         
         if matrix.shape[1] == 0:

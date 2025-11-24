@@ -8,6 +8,7 @@ import ray
 from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
+from pathlib import Path
 from flwr.client import Client, ClientApp, NumPyClient
 from flwr.common import Metrics, Context
 from flwr.server import ServerApp, ServerConfig, ServerAppComponents
