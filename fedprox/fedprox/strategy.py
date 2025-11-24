@@ -145,8 +145,8 @@ save_dir="feature_visualizations"
 
         # -------------------------------------------------------
         # 2) Collect prototypes from selected clients (if available)
-        #    These prototypes were computed after the previous round
-        #    in client.fit() via _extract_and_cache_prototypes.
+        #    These were computed after the PREVIOUS round in client.fit()
+        #    via _extract_and_cache_prototypes.
         # -------------------------------------------------------
         all_prototypes_list = []
         all_client_ids = []
@@ -154,10 +154,18 @@ save_dir="feature_visualizations"
 
         for client in clients:
             try:
-                # IMPORTANT:
-                #   Your client.get_properties(self, config) expects a plain dict,
-                #   NOT PropertiesIns or GetPropertiesIns.
-                props = client.get_properties({"request": "prototypes"})
+                # Build GetPropertiesIns with the config dict
+                ins = GetPropertiesIns(config={"request": "prototypes"})
+
+                # GridClientProxy.get_properties requires (ins, timeout, group_id)
+                props_res = client.get_properties(
+                    ins=ins,
+                    timeout=15.0,   # seconds, adjust if needed
+                    group_id=None,
+                )
+
+                # props_res.properties is the dict returned by your NumPyClient.get_properties
+                props = props_res.properties
 
                 if not isinstance(props, dict):
                     print(
@@ -166,7 +174,7 @@ save_dir="feature_visualizations"
                     )
                     continue
 
-                # If this client has no prototypes yet (e.g., round 1), skip
+                # Skip if this client has no prototypes yet (e.g., round 1)
                 if "prototypes" not in props or "class_counts" not in props:
                     print(
                         f"[Server] Round {server_round} - "
@@ -188,7 +196,7 @@ save_dir="feature_visualizations"
 
                 all_prototypes_list.append(prototypes)
 
-                # Logical client ID (you return this from get_properties as "client_cid")
+                # Logical client ID (you send this as "client_cid" from get_properties)
                 client_cid = props.get("client_cid", client.cid)
                 try:
                     client_cid_int = int(client_cid)
@@ -229,8 +237,8 @@ save_dir="feature_visualizations"
 
         # -------------------------------------------------------
         # 5) Create FitIns for each client
-        #    - include 'round' and 'extract_prototypes' keys so
-        #      client.fit() knows to compute new prototypes
+        #    Include 'round' and 'extract_prototypes' so client.fit()
+        #    knows to compute and cache prototypes after training.
         # -------------------------------------------------------
         fit_instructions = []
         for client in clients:
