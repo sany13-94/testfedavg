@@ -326,7 +326,7 @@ def get_server_fn(mlflow=None):
         min_fit_clients=  6,  # Set minimum number of clients for training
          min_available_clients=6,
         ground_truth_stragglers=ground_truth_stragglers,
-        total_rounds= 4,
+        total_rounds= 2,
 min_evaluate_clients=6,
         on_fit_config_fn=get_on_fit_config_fn(),
         
@@ -334,7 +334,7 @@ min_evaluate_clients=6,
       )
 
     # Configure the server for 5 rounds of training
-    config = ServerConfig(num_rounds=4)
+    config = ServerConfig(num_rounds=2)
 
     return ServerAppComponents(strategy=strategyi, config=config)
  return server_fn
