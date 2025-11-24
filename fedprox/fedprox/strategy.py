@@ -38,7 +38,7 @@ from flwr.common import (
     Scalar,
     ndarrays_to_parameters,
     parameters_to_ndarrays,
-     GetPropertiesIns, GetPropertiesRes
+     GetPropertiesIns, GetPropertiesRes,PropertiesIns
 )
 GLOBAL_FEDAVG_STRATEGY_INSTANCE = None
 class FedAVGWithEval(FedAvg):
