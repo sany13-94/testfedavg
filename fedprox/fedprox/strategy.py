@@ -100,6 +100,9 @@ class FedAVGWithEval(FedAvg):
      # expose this instance globally so main() can access it later
      global GLOBAL_FEDAVG_STRATEGY_INSTANCE
      GLOBAL_FEDAVG_STRATEGY_INSTANCE = self
+     save_dir = "/kaggle/working/cluster-CDCSF/fedprox/checkpoints"
+     self.save_dir = save_dir
+     os.makedirs(self.save_dir, exist_ok=True)
 
      # If the CSV already exists, preload seen pairs (so we don't duplicate)
      if self.map_path.exists():
