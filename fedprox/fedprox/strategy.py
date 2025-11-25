@@ -512,6 +512,9 @@ save_dir="feature_visualizations"
     def _append_rows(self, rows: List[dict]) -> None:
         if not rows:
             return
+        
+        
+        #ff
         header = ["server_cid", "client_cid", "flower_node_id"]
         write_header = not self.map_path.exists()
         with self.map_path.open("a", newline="") as f:
