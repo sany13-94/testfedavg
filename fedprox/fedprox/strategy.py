@@ -75,6 +75,8 @@ class FedAVGWithEval(FedAvg):
      self.total_rounds=total_rounds
      self.client_participation_count = {}  # client_id -> number of times selected
      self.min_fit_clients = min_fit_clients
+     self.global_reference_proto = None  # Stores previous round's reference
+
      # mappings
      self.training_times = {}
      self.selection_counts = {}
@@ -130,134 +132,85 @@ save_dir="feature_visualizations"
             return None
 
     def configure_fit(self, server_round, parameters, client_manager):
-      
-      sample_size, min_num_clients = self.num_fit_clients(
-        client_manager.num_available()
-    )
-      clients = client_manager.sample(
-        num_clients=min_num_clients,
-        min_num_clients=min_num_clients,
-    )
-      print(f"[Server] Round {server_round} - num clients selected: {min_num_clients}")
+        """Configure training with fixed prototype scoring."""
+        
+        # Sample clients
+        sample_size, min_num_clients = self.num_fit_clients(
+            client_manager.num_available()
+        )
+        clients = client_manager.sample(
+            num_clients=min_num_clients,
+            min_num_clients=min_num_clients,
+        )
+        print(f"[Server] Round {server_round} - Selected {len(clients)} clients")
 
-    
-      all_prototypes_list = []
-      all_client_ids = []
-      selected_clients_logical_ids = []
+        # Collect prototypes
+        all_prototypes_list = []
+        all_client_ids = []
 
-      for client in clients:
-        try:
-            # Request prototypes from client
-            ins = GetPropertiesIns(config={"request": "prototypes"})
-            props_res = client.get_properties(
-                ins=ins,
-                timeout=15.0,
-                group_id=None,
-            )
-
-            # CRITICAL FIX: Convert ConfigsRecord to regular dict
-            # In Flower, props_res.properties is a ConfigsRecord, not a dict
-            props = {}
+        for client in clients:
             try:
-                # Method 1: Iterate over keys (most compatible)
+                ins = GetPropertiesIns(config={"request": "prototypes"})
+                props_res = client.get_properties(ins=ins, timeout=15.0, group_id=None)
+
+                props = {}
                 for key in props_res.properties.keys():
                     props[key] = props_res.properties[key]
-            except Exception as conv_error:
-                print(
-                    f"[Server] Round {server_round} - "
-                    f"client {client.cid} properties conversion failed: {conv_error}"
-                )
-                continue
 
-            # Check if prototypes are available
-            if "prototypes" not in props or "class_counts" not in props:
-                print(
-                    f"[Server] Round {server_round} - "
-                    f"client {client.cid} has no prototypes yet, skipping"
-                )
-                continue
+                if "prototypes" not in props:
+                    continue
 
-            # Decode prototypes
-            try:
                 prototypes_encoded = props["prototypes"]
-                class_counts_encoded = props["class_counts"]
-                
                 proto_bytes = base64.b64decode(prototypes_encoded)
                 prototypes = pickle.loads(proto_bytes)
-                
-                counts_bytes = base64.b64decode(class_counts_encoded)
-                class_counts = pickle.loads(counts_bytes)
-                
-            except Exception as decode_error:
-                print(
-                    f"[Server] Round {server_round} - "
-                    f"client {client.cid} decode error: {decode_error}"
-                )
+
+                if not isinstance(prototypes, dict):
+                    continue
+
+                all_prototypes_list.append(prototypes)
+
+                client_cid = props.get("client_cid", client.cid)
+                try:
+                    client_cid_int = int(client_cid)
+                except Exception:
+                    client_cid_int = client.cid
+
+                all_client_ids.append(client_cid_int)
+
+            except Exception as e:
+                print(f"[Server] Round {server_round} - Error with client {client.cid}: {e}")
                 continue
 
-            # Validate prototypes
-            if not isinstance(prototypes, dict):
-                print(
-                    f"[Server] Round {server_round} - "
-                    f"client {client.cid} prototypes not a dict, skipping"
-                )
-                continue
-
-            # Successfully collected prototypes
-            all_prototypes_list.append(prototypes)
-
-            # Get logical client ID
-            client_cid = props.get("client_cid", client.cid)
-            try:
-                client_cid_int = int(client_cid)
-            except Exception:
-                # If conversion fails, use the original cid
-                client_cid_int = client.cid
-
-            all_client_ids.append(client_cid_int)
-            selected_clients_logical_ids.append(client_cid_int)
-            
-            print(f"[Server] Round {server_round} - ✓ Client {client_cid_int}: Prototypes collected")
-
-        except Exception as e:
-            print(
-                f"[Server] Round {server_round} - "
-                f"error getting prototypes from client {client.cid}: {e}"
+        # Compute scores using FIXED reference
+        if all_prototypes_list and all_client_ids:
+            self._compute_and_log_scores_fixed(
+                round_num=server_round,
+                selected_clients=all_client_ids,
+                all_prototypes_list=all_prototypes_list,
             )
-            import traceback
-            traceback.print_exc()
-            continue
 
-    
-      if all_prototypes_list and all_client_ids:
-        print(f"[Server] Round {server_round} - Computing prototype scores for {len(all_client_ids)} clients")
-        self.compute_and_log_scores(
-            round_num=server_round,
-            selected_clients=selected_clients_logical_ids,
-            all_prototypes_list=all_prototypes_list,
-            all_client_ids=all_client_ids,
-        )
-      else:
-        print(
-            f"[Server] Round {server_round} - "
-            "no prototypes collected, skipping score computation"
-        )
+        # Build fit configuration
+        fit_config = {}
+        if self.on_fit_config_fn is not None:
+            fit_config = self.on_fit_config_fn(server_round)
 
-    
-      fit_config = {}
-      if self.on_fit_config_fn is not None:
-        fit_config = self.on_fit_config_fn(server_round)
+        # Create FitIns
+        fit_instructions = []
+        for client in clients:
+            client_fit_config = dict(fit_config)
+            client_fit_config["server_round"] = server_round
+            client_fit_config["extract_prototypes"] = True
+            fit_instructions.append((client, FitIns(parameters, client_fit_config)))
 
-    
-      fit_instructions = []
-      for client in clients:
-        client_fit_config = dict(fit_config)
-        client_fit_config["server_round"] = server_round
-        client_fit_config["extract_prototypes"] = True
+        # Generate heatmap at final round
+        if server_round == self.final_round:
+            print(f"\n{'='*60}")
+            print(f"Final round - Generating prototype heatmap...")
+            print(f"{'='*60}\n")
+            self.plot_heatmap()
 
-        fit_instructions.append((client, FitIns(parameters, client_fit_config)))
+        return fit_instructions
 
-      return fit_instructions
 
 
 
@@ -279,77 +232,76 @@ save_dir="feature_visualizations"
       # Return client-EvaluateIns pairs
       return [(client, evaluate_ins) for client in clients]   
     
-    def compute_and_log_scores(self, round_num, selected_clients, all_prototypes_list, 
-                               all_client_ids):
-       
+    
+    def _compute_and_log_scores_fixed(self, round_num, selected_clients, all_prototypes_list):
+        """
+        FIXED VERSION: Compute scores relative to previous round's global reference.
+        This avoids self-referencing and shows true diversity.
+        """
         self.selection_history[round_num] = selected_clients
         
-        # Compute global reference prototypes (average across all clients)
-        reference_prototypes = self._compute_global_reference(all_prototypes_list)
+        # Compute current round's global average (for next round's reference)
+        current_global = self._compute_global_average(all_prototypes_list)
         
-        # Calculate distance scores for each client
-        for client_id, prototypes in zip(all_client_ids, all_prototypes_list):
-            score = self._calculate_prototype_distance(prototypes, reference_prototypes)
-            self.prototype_scores[round_num][client_id] = score
+        # For scoring, use PREVIOUS round's global reference
+        # This avoids comparing clients to themselves
+        if self.global_reference_proto is None:
+            # First round: use inter-client distances instead
+            scores = self._compute_inter_client_distances(all_prototypes_list, selected_clients)
+        else:
+            # Subsequent rounds: compare to previous global reference
+            scores = {}
+            for client_id, prototypes in zip(selected_clients, all_prototypes_list):
+                # Average client's class prototypes into single vector
+                client_proto = self._average_class_prototypes(prototypes)
+                
+                if client_proto is not None:
+                    # Distance to previous global reference
+                    dist = np.linalg.norm(client_proto - self.global_reference_proto)
+                    scores[client_id] = float(dist)
+                else:
+                    scores[client_id] = 0.0
         
-        print(f"Round {round_num}: Computed scores for {len(selected_clients)} clients")
-        print(f"  Domain diversity (avg distance): {np.mean(list(self.prototype_scores[round_num].values())):.4f}")
+        # Store scores
+        for client_id in selected_clients:
+            self.prototype_scores[round_num][client_id] = scores.get(client_id, 0.0)
+        
+        # Update reference for next round
+        self.global_reference_proto = current_global
+        
+        # Statistics
+        if scores:
+            non_zero = [s for s in scores.values() if s > 0]
+            if non_zero:
+                avg = np.mean(non_zero)
+                print(f"[Server] Round {round_num}: Avg prototype distance = {avg:.4f}")
     
-    def _compute_global_reference(self, all_prototypes_list):
-        """
-        Compute global reference prototypes by averaging across all clients.
-        
-        Args:
-            all_prototypes_list: List of prototype dictionaries from all clients
-            
-        Returns:
-            dict: Global reference prototypes
-        """
+    def _compute_global_average(self, all_prototypes_list):
+        """Compute global average prototype for this round."""
         if not all_prototypes_list:
-            return {}
+            return None
         
-        # Aggregate prototypes by class
-        class_proto_aggregates = defaultdict(list)
+        all_client_averages = []
+        for prototypes in all_prototypes_list:
+            client_avg = self._average_class_prototypes(prototypes)
+            if client_avg is not None:
+                all_client_averages.append(client_avg)
         
-        for client_prototypes in all_prototypes_list:
-            for class_id, proto in client_prototypes.items():
-                if proto is not None:
-                    class_proto_aggregates[class_id].append(proto)
+        if not all_client_averages:
+            return None
         
-        # Average prototypes for each class
-        global_prototypes = {}
-        for class_id, proto_list in class_proto_aggregates.items():
-            if proto_list:
-                global_prototypes[class_id] = np.mean(np.stack(proto_list), axis=0)
-        
-        return global_prototypes
+        return np.mean(np.stack(all_client_averages), axis=0)
     
-    def _calculate_prototype_distance(self, prototypes, reference_prototypes):
-        """
-        Calculate average Euclidean distance from client prototypes to reference prototypes.
-        Higher distance indicates more distinct domain characteristics.
+    def _average_class_prototypes(self, prototypes):
+        """Average all class prototypes into single vector."""
+        if not prototypes:
+            return None
         
-        Args:
-            prototypes: Client's prototypes {class_id: prototype_vector}
-            reference_prototypes: Reference prototypes (global average)
-            
-        Returns:
-            float: Average distance to reference (domain distinctiveness score)
-        """
-        if not prototypes or not reference_prototypes:
-            return 0.0
+        valid_protos = [p for p in prototypes.values() if p is not None]
+        if not valid_protos:
+            return None
         
-        distances = []
-        
-        for class_id, proto in prototypes.items():
-            if proto is not None and class_id in reference_prototypes:
-                ref_proto = reference_prototypes[class_id]
-                if ref_proto is not None:
-                    # Euclidean distance
-                    dist = np.linalg.norm(proto - ref_proto)
-                    distances.append(dist)
-        
-        return np.mean(distances) if distances else 0.0
+        return np.mean(np.stack(valid_protos), axis=0)
     
     def create_selection_matrix(self):
         """
@@ -376,6 +328,48 @@ save_dir="feature_visualizations"
                         matrix[client_idx, round_num - 1] = score
         
         return matrix
+    
+    
+    def _compute_inter_client_distances(self, all_prototypes_list, selected_clients):
+        """
+        For first round: compute average distance to other clients.
+        This shows relative diversity without a reference.
+        """
+        scores = {}
+        
+        # Convert to client averages
+        client_averages = []
+        valid_clients = []
+        
+        for cid, prototypes in zip(selected_clients, all_prototypes_list):
+            avg = self._average_class_prototypes(prototypes)
+            if avg is not None:
+                client_averages.append(avg)
+                valid_clients.append(cid)
+        
+        if len(client_averages) < 2:
+            # Not enough clients to compare
+            for cid in selected_clients:
+                scores[cid] = 0.0
+            return scores
+        
+        # Compute pairwise distances
+        for i, cid in enumerate(valid_clients):
+            distances = []
+            for j, other_avg in enumerate(client_averages):
+                if i != j:
+                    dist = np.linalg.norm(client_averages[i] - other_avg)
+                    distances.append(dist)
+            
+            # Average distance to other clients
+            scores[cid] = float(np.mean(distances)) if distances else 0.0
+        
+        # Clients with no prototypes
+        for cid in selected_clients:
+            if cid not in scores:
+                scores[cid] = 0.0
+        
+        return scores
     
     def plot_heatmap(self, figsize=(20, 10), cmap='viridis', save_name='fedavg_selection_heatmap.png'):
    
@@ -515,8 +509,6 @@ save_dir="feature_visualizations"
     
       plt.close(fig)
 
-
-
     def _append_rows(self, rows: List[dict]) -> None:
         if not rows:
             return
@@ -527,6 +519,7 @@ save_dir="feature_visualizations"
             if write_header:
                 w.writeheader()
             w.writerows(rows)
+
     def aggregate_fit(
         self,
         server_round: int,
@@ -622,13 +615,7 @@ save_dir="feature_visualizations"
             print("="*80)
             self._save_all_results()
 
-            matrix = self.create_selection_matrix()
-
-            # Optionally inspect matrix shape
-            print(f"Selection matrix shape: {matrix.shape}")
-
-            # Save heatmap into the Hydra run directory
-            
+          
             self.plot_heatmap(
             save_name="fedavg_selection_heatmap.png",
             cmap="viridis",
@@ -732,7 +719,6 @@ save_dir="feature_visualizations"
         self.save_participation_stats()
         self.visualize_client_participation(self.client_participation_count, save_path="participation_chart.png", 
                                 )    
-
     
 
     def save_participation_stats(self, filename="client_participation.csv"):
