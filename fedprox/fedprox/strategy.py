@@ -199,6 +199,7 @@ save_dir="feature_visualizations"
                 selected_clients=all_client_ids,
                 all_prototypes_list=all_prototypes_list,
             )
+            
 
         # Build fit configuration
         fit_config = {}
