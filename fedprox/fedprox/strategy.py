@@ -323,6 +323,47 @@ save_dir="feature_visualizations"
                         matrix[client_idx, round_num - 1] = score
         
         return matrix
+
+    def _compute_and_log_scores_pairwise(self, round_num, selected_clients, all_prototypes_list):
+      """
+      ALTERNATIVE: Always use inter-client distances.
+      Shows how different each client is from others in the same round.
+      """
+      self.selection_history[round_num] = selected_clients
+    
+      # Convert prototypes to client-level averages
+      client_vectors = {}
+      for cid, prototypes in zip(selected_clients, all_prototypes_list):
+        avg = self._average_class_prototypes(prototypes)
+        if avg is not None:
+            client_vectors[cid] = avg
+    
+      # Compute average distance to all other clients
+      scores = {}
+      for cid in selected_clients:
+        if cid not in client_vectors:
+            scores[cid] = 0.0
+            continue
+        
+        distances = []
+        for other_cid, other_vec in client_vectors.items():
+            if cid != other_cid:
+                dist = np.linalg.norm(client_vectors[cid] - other_vec)
+                distances.append(dist)
+        
+        scores[cid] = float(np.mean(distances)) if distances else 0.0
+    
+      # Store scores
+      for cid in selected_clients:
+        self.prototype_scores[round_num][cid] = scores.get(cid, 0.0)
+    
+      # Statistics
+      non_zero = [s for s in scores.values() if s > 0]
+      if non_zero:
+        avg = np.mean(non_zero)
+        std = np.std(non_zero)
+        print(f"[Server] Round {round_num}: Inter-client distance = {avg:.4f} ± {std:.4f}")
+
     
     
     def _compute_inter_client_distances(self, all_prototypes_list, selected_clients):
