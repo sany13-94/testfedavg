@@ -122,6 +122,17 @@ class FedAVGWithEval(FedAvg):
 
 save_dir="feature_visualizations"
           )
+
+    def _cosine_distance(self, a, b, eps=1e-8):
+      a = np.asarray(a, dtype=np.float32)
+      b = np.asarray(b, dtype=np.float32)
+      na = np.linalg.norm(a)
+      nb = np.linalg.norm(b)
+      if na < eps or nb < eps:
+        return 1.0
+      cos_sim = float(np.dot(a, b) / (na * nb))
+      return 1.0 - cos_sim
+
     def evaluate(
         self, server_round: int, parameters: Parameters
     ) -> Optional[Tuple[float, Dict[str, Scalar]]]:
@@ -183,7 +194,7 @@ save_dir="feature_visualizations"
 
         # Compute scores using FIXED reference
         if all_prototypes_list and all_client_ids:
-            self._compute_and_log_scores_fixed(
+            self._compute_and_log_scores_pairwise(
                 round_num=server_round,
                 selected_clients=all_client_ids,
                 all_prototypes_list=all_prototypes_list,
@@ -326,45 +337,53 @@ save_dir="feature_visualizations"
 
     def _compute_and_log_scores_pairwise(self, round_num, selected_clients, all_prototypes_list):
       """
-      ALTERNATIVE: Always use inter-client distances.
-      Shows how different each client is from others in the same round.
+      Compute per-client prototype scores based on inter-client cosine distances.
+
+      For each selected client:
+      score = average( 1 - cosine(client_proto, other_client_proto) )
+
+      This measures how diverse the client's representation is compared to others
+      selected in the same round.
+
+      High score -> client brings domain-diverse information.
+      Low score  -> client is similar to others (redundant domain).
       """
       self.selection_history[round_num] = selected_clients
-    
-      # Convert prototypes to client-level averages
+
+      # Convert prototypes to client-level vectors
       client_vectors = {}
       for cid, prototypes in zip(selected_clients, all_prototypes_list):
         avg = self._average_class_prototypes(prototypes)
         if avg is not None:
             client_vectors[cid] = avg
-    
-      # Compute average distance to all other clients
+
       scores = {}
       for cid in selected_clients:
         if cid not in client_vectors:
             scores[cid] = 0.0
             continue
-        
+
         distances = []
         for other_cid, other_vec in client_vectors.items():
             if cid != other_cid:
-                dist = np.linalg.norm(client_vectors[cid] - other_vec)
+                dist = self._cosine_distance(client_vectors[cid], other_vec)
                 distances.append(dist)
-        
+
         scores[cid] = float(np.mean(distances)) if distances else 0.0
-    
+
       # Store scores
+      if not hasattr(self, "prototype_scores"):
+        from collections import defaultdict
+        self.prototype_scores = defaultdict(dict)
+
       for cid in selected_clients:
         self.prototype_scores[round_num][cid] = scores.get(cid, 0.0)
-    
-      # Statistics
+
       non_zero = [s for s in scores.values() if s > 0]
       if non_zero:
         avg = np.mean(non_zero)
         std = np.std(non_zero)
-        print(f"[Server] Round {round_num}: Inter-client distance = {avg:.4f} ± {std:.4f}")
-
-    
+        print(f"[Server] Round {round_num}: Inter-client cosine distance = {avg:.4f} ± {std:.4f}")
     
     def _compute_inter_client_distances(self, all_prototypes_list, selected_clients):
         """
