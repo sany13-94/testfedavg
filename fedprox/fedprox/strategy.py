@@ -202,12 +202,7 @@ save_dir="feature_visualizations"
             client_fit_config["extract_prototypes"] = True
             fit_instructions.append((client, FitIns(parameters, client_fit_config)))
 
-        # Generate heatmap at final round
-        if server_round == self.final_round:
-            print(f"\n{'='*60}")
-            print(f"Final round - Generating prototype heatmap...")
-            print(f"{'='*60}\n")
-            self.plot_heatmap()
+        
 
         return fit_instructions
 
@@ -512,8 +507,7 @@ save_dir="feature_visualizations"
     def _append_rows(self, rows: List[dict]) -> None:
         if not rows:
             return
-        
-        
+               
         #ff
         header = ["server_cid", "client_cid", "flower_node_id"]
         write_header = not self.map_path.exists()
@@ -722,7 +716,6 @@ save_dir="feature_visualizations"
         self.save_participation_stats()
         self.visualize_client_participation(self.client_participation_count, save_path="participation_chart.png", 
                                 )    
-    
 
     def save_participation_stats(self, filename="client_participation.csv"):
         """Save participation statistics at the end of training"""
