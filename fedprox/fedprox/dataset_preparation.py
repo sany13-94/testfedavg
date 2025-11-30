@@ -40,6 +40,7 @@ warnings.filterwarnings(
     message="The given NumPy array is not writable, and PyTorch does not support non-writable tensors.", 
     category=UserWarning
 )
+
 def build_augmentation_transform():  
     
     t = []
@@ -103,15 +104,7 @@ class SameModalityDomainShift:
         return characteristics
     
     def apply_transform(self, img: torch.Tensor) -> torch.Tensor:
-        """
-        Apply domain shift transformation to image.
         
-        Args:
-            img: Input image tensor in range [0, 1]
-            
-        Returns:
-            Transformed image tensor
-        """
         # Domain 0 (high-end) remains unchanged
         if self.domain_id == 0:
             return img
@@ -155,10 +148,6 @@ class DomainShiftedPathMNIST(Dataset):
 
 
 class LazyPathMNIST(Dataset):
-    """
-    Load raw PathMNIST data and apply ONLY ToTensor scaling to [0, 1].
-    Augmentations and domain shifts are applied by wrappers.
-    """
     def __init__(self, split: str, transform=None):
         import medmnist
         
@@ -169,19 +158,17 @@ class LazyPathMNIST(Dataset):
             
         self.split = split
         
-        # Load official medmnist dataset
         dataset_class = getattr(medmnist.dataset, 'PathMNIST')
         self.medmnist_ds = dataset_class(split=split, transform=None, download=True)
         
-        # Extract NumPy arrays
-        self.imgs = self.medmnist_ds.imgs  # (N, H, W, C)
+        self.imgs = self.medmnist_ds.imgs          # (N, H, W, C)
         self.labels = self.medmnist_ds.labels.flatten()  # (N,)
+        self.targets = self.labels                 # <--- ADD THIS LINE
 
     def __len__(self) -> int:
         return len(self.imgs)
 
     def __getitem__(self, idx: int):
-        """Convert NumPy (HWC) -> Tensor (CHW, [0,1])"""
         img = self.imgs[idx].copy()
         img_tensor = self.to_tensor_converter(img)
         
@@ -210,6 +197,142 @@ class AugmentationWrapper(Dataset):
         img = self.augmentation(img)
         return img, label
 
+import numpy as np
+import matplotlib.pyplot as plt
+import torch
+from torch.utils.data import Subset
+
+
+def _get_partition_targets(partition):
+    """Extract labels from Subset or Dataset."""
+    if isinstance(partition, Subset):
+        ds = partition.dataset
+        indices = partition.indices
+    else:
+        ds = partition
+        indices = np.arange(len(ds))
+
+    if hasattr(ds, "targets"):
+        targets = ds.targets
+    elif hasattr(ds, "labels"):
+        targets = ds.labels
+    else:
+        raise AttributeError("Dataset missing 'targets' or 'labels'.")
+
+    if isinstance(targets, torch.Tensor):
+        targets = targets.numpy()
+    else:
+        targets = np.array(targets)
+
+    return targets[indices]
+
+
+def visualize_non_iid_stacked_by_domain(
+    client_partitions,
+    num_classes,
+    domain_assignment,
+    class_names=None,
+    normalize=True,
+    figsize_per_client=0.6,
+    row_height=4.0,
+    output_path=None,
+    show=True,
+    test_partition=None,
+    test_domain_id=None,
+):
+    """
+    One stacked bar per client, grouped by domain (one row per domain).
+
+    Args:
+        client_partitions: list of train client datasets/subsets.
+        num_classes: number of classes.
+        domain_assignment: list of domain ids for each train client.
+        class_names: optional list of length num_classes.
+        normalize: True -> % per client, False -> raw counts.
+        figsize_per_client: width contribution per client for the figure.
+        row_height: height per domain row.
+        output_path: if not None, save figure here.
+        show: if True, plt.show(); otherwise close.
+        test_partition: optional test dataset to append as extra client.
+        test_domain_id: domain id for test client (e.g. 3).
+    """
+    # Build combined list of partitions + domains
+    partitions = list(client_partitions)
+    domains = list(domain_assignment)
+
+    if test_partition is not None:
+        partitions.append(test_partition)
+        domains.append(test_domain_id)
+
+    num_clients = len(partitions)
+
+    # Compute class distribution per client
+    dist_matrix = np.zeros((num_clients, num_classes), dtype=float)  # [client, class]
+    for cid, part in enumerate(partitions):
+        targets = _get_partition_targets(part)
+        counts = np.bincount(targets, minlength=num_classes)
+        if normalize:
+            total = counts.sum()
+            if total > 0:
+                dist_matrix[cid] = counts / total * 100.0
+        else:
+            dist_matrix[cid] = counts
+
+    if class_names is None:
+        class_names = [f"class_{i}" for i in range(num_classes)]
+
+    # One row per domain
+    unique_domains = sorted(set(domains))
+    n_domains = len(unique_domains)
+
+    fig_width = max(8.0, num_clients * figsize_per_client)
+    fig_height = max(row_height, n_domains * row_height)
+    fig, axes = plt.subplots(
+        n_domains, 1, figsize=(fig_width, fig_height), squeeze=False
+    )
+    axes = axes.flatten()
+
+    for ax_idx, dom in enumerate(unique_domains):
+        ax = axes[ax_idx]
+        # clients belonging to this domain
+        client_ids = [i for i, d in enumerate(domains) if d == dom]
+        data = dist_matrix[client_ids]  # shape: [n_clients_dom, num_classes]
+        x = np.arange(len(client_ids))
+
+        bottom = np.zeros(len(client_ids))
+        for c in range(num_classes):
+            vals = data[:, c]
+            ax.bar(x, vals, bottom=bottom, label=class_names[c])
+            bottom += vals
+
+        # x tick labels: client ids (mark test client if last one)
+        xticklabels = []
+        for idx, cid in enumerate(client_ids):
+            label = f"C{cid}"
+            xticklabels.append(label)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(xticklabels, rotation=45)
+        ylabel = "Percentage (%)" if normalize else "Count"
+        ax.set_ylabel(ylabel)
+        ax.set_title(f"Domain {dom} – clients: {client_ids}")
+        if normalize:
+            ax.set_ylim(0, 100.0)
+
+    # Add legend only once (top-right)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, title="Classes", loc="upper right")
+
+    plt.tight_layout(rect=(0, 0, 0.9, 1))  # leave space on the right for legend
+
+    if output_path is not None:
+        plt.savefig(output_path, bbox_inches="tight")
+        print(f"Saved stacked non-IID visualization to: {output_path}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
 
 def make_pathmnist_clients_with_domains(
     k: int = 15,
@@ -217,10 +340,10 @@ def make_pathmnist_clients_with_domains(
     batch_size: int = 32,
     val_ratio: float = 0.1,
     seed: int = 42,
-    save_samples: bool = True
+    save_samples: bool = True,
+    alpha: float = 0.5,
+    min_size_ratio: float = 0.1
 ):
-  
-    
     augmentation_transform = build_augmentation_transform()
     
     ds_train = LazyPathMNIST(split='train')
@@ -228,7 +351,7 @@ def make_pathmnist_clients_with_domains(
     
     num_train_clients = k - 1
     
-    # Assign clients to domains explicitly
+    # Assign clients to domains (unchanged)
     clients_per_domain = num_train_clients // d
     domain_assignment = []
     
@@ -236,7 +359,6 @@ def make_pathmnist_clients_with_domains(
         for _ in range(clients_per_domain):
             domain_assignment.append(domain_id)
     
-    # Handle remaining clients (distribute evenly)
     for i in range(num_train_clients - len(domain_assignment)):
         domain_assignment.append(i % d)
     
@@ -248,12 +370,15 @@ def make_pathmnist_clients_with_domains(
         print(f"  Domain {domain_id}: Clients {clients_in_domain}")
     print(f"  Test Domain (unshifted): Client {k-1}")
     
-    # Partition train data across clients
-    g = torch.Generator().manual_seed(seed)
-    base_size = len(ds_train) // num_train_clients
-    remainder = len(ds_train) % num_train_clients
-    partition_lengths = [base_size + 1] * remainder + [base_size] * (num_train_clients - remainder)
-    raw_train_partitions = random_split(ds_train, partition_lengths, generator=g)
+    # ========= NEW: Dirichlet non-IID partitioning over ds_train =========
+    raw_train_partitions = _dirichlet_split(
+        trainset=ds_train,
+        num_partitions=num_train_clients,
+        alpha=alpha,
+        min_size_ratio=min_size_ratio,
+        seed=seed
+    )
+    # =====================================================================
     
     train_loaders, val_loaders = [], []
     
@@ -261,95 +386,209 @@ def make_pathmnist_clients_with_domains(
     for client_id in range(num_train_clients):
         partition_ds = raw_train_partitions[client_id]
         
-        # Split into train/val
+        # Split each client's partition into train/val
         n_val = int(len(partition_ds) * val_ratio)
         n_trn = len(partition_ds) - n_val
         g_split = torch.Generator().manual_seed(seed + client_id)
         trn_base, val_base = random_split(partition_ds, [n_trn, n_val], generator=g_split)
         
-        # Get domain_id for this client
         domain_id = domain_assignment[client_id]
         
-        # Save sample images (one per domain, not per client)
+        # Save sample images once per domain
         if save_samples and client_id == domain_assignment.index(domain_id):
             save_domain_samples(partition_ds, domain_id, client_id)
         
-        # Apply domain shift based on domain_id
+        # Apply domain shift (per client / domain)
         shifted_trn_ds = DomainShiftedPathMNIST(
             base_ds=trn_base,
-            domain_id=domain_id,  # ← Consistent: use domain_id
+            domain_id=domain_id,
             seed=seed
         )
         shifted_val_ds = DomainShiftedPathMNIST(
             base_ds=val_base,
-            domain_id=domain_id,  # ← Consistent: use domain_id
+            domain_id=domain_id,
             seed=seed
         )
         
-        # Apply augmentation (train only)
-        augmented_trn_ds = AugmentationWrapper(shifted_trn_ds, client_id,domain_id,augmentation_transform)
+        # Augmentation only for train
+        augmented_trn_ds = AugmentationWrapper(
+            shifted_trn_ds,
+            client_id=client_id,
+            domain_id=domain_id,
+            augmentation_transform=augmentation_transform
+        )
         
         train_loaders.append(
-            DataLoader(augmented_trn_ds, batch_size=batch_size,
-                        shuffle=True,
-    num_workers=2,         
-    pin_memory=True,
- 
-                      )
+            DataLoader(
+                augmented_trn_ds,
+                batch_size=batch_size,
+                shuffle=True,
+                num_workers=2,
+                pin_memory=True,
+            )
         )
-
         val_loaders.append(
-            DataLoader(shifted_val_ds, batch_size=batch_size, shuffle=True, 
-                        pin_memory=True,
-   num_workers=2, 
-   )
+            DataLoader(
+                shifted_val_ds,
+                batch_size=batch_size,
+                shuffle=True,
+                num_workers=2,
+                pin_memory=True,
+            )
         )
-
     
-    # Create test domain client (unshifted, domain_id=0)
+    # Test client (no domain shift / or domain_id=0 if you want high-end)
     n_val_test = int(len(ds_test) * val_ratio)
     n_trn_test = len(ds_test) - n_val_test
     g_test_split = torch.Generator().manual_seed(seed + k - 1)
-    trn_test_base, val_test_base = random_split(ds_test, [n_trn_test, n_val_test], 
-                                                 generator=g_test_split)
+    trn_test_base, val_test_base = random_split(
+        ds_test,
+        [n_trn_test, n_val_test],
+        generator=g_test_split
+    )
     
-    # Example for your train_loaders
+    # Optional: show per-client signature on *Dirichlet* partitions
     client_signatures = []
     for client_id, partition_ds in enumerate(raw_train_partitions):
-      signature = get_client_signature(partition_ds)
-      print(f"Client {client_id} | Signature: {signature}")
-      client_signatures.append(signature)
-   
-    augmented_trn_test_ds = AugmentationWrapper(trn_test_base, num_train_clients,3,augmentation_transform)
-   
-    train_loaders.append(
-        DataLoader(augmented_trn_test_ds, batch_size=batch_size,    shuffle=True,
-    num_workers=2,         
-    pin_memory=True,
-
+        signature = get_client_signature(partition_ds)
+        print(f"Client {client_id} | Signature: {signature}")
+        client_signatures.append(signature)
+    
+    # For test client, you can keep it "clean" (no domain shift),
+    # or give it a separate domain_id (e.g., 3) as you had.
+    augmented_trn_test_ds = AugmentationWrapper(
+        base_ds=trn_test_base,
+        client_id=num_train_clients,
+        domain_id=3,  # or 0 if you want high-end test
+        augmentation_transform=augmentation_transform
     )
+    
+    train_loaders.append(
+        DataLoader(
+            augmented_trn_test_ds,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=2,
+            pin_memory=True,
+        )
     )
     val_loaders.append(
-        DataLoader(val_test_base, batch_size=batch_size   ,    shuffle=True,
-    num_workers=2,         
-    pin_memory=True,
- 
+        DataLoader(
+            val_test_base,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=2,
+            pin_memory=True,
+        )
     )
-    )
 
-    print(f"\n[SUMMARY]")
-    for i, loader in enumerate(train_loaders):
-      print(f"Client {i} | Domain ID: {domain_assignment[i] if i < len(domain_assignment) else 'extra_domain'} | #Batches: {len(loader)}")
+    NUM_CLASSES = 9  # PathMNIST
+    CLASS_NAMES = [f"class_{i}" for i in range(NUM_CLASSES)]  # or real names
 
 
-    
+    visualize_non_iid_stacked_by_domain(
+    client_partitions=raw_train_partitions,
+    num_classes=NUM_CLASSES,
+    domain_assignment=domain_assignment,
+    class_names=CLASS_NAMES,
+    normalize=True,  # percentages
+    figsize_per_client=0.5,
+    row_height=4.0,
+    test_partition=trn_test_base,    # include test as extra client
+    test_domain_id=3,                # or 0 if you consider it high-end
+    output_path="pathmnist_non_iid_stacked_by_domain.png",
+    show=True,
+)
 
-    # Generate and print signatures for each client
-    
-   
-    
+    # domain_assignment + [3] : last id is test client domain
     return train_loaders, val_loaders, domain_assignment + [3]
 
+def _dirichlet_split(
+    trainset: Dataset,
+    num_partitions: int,
+    alpha: float = 0.5,
+    min_size_ratio: float = 0.1,
+    seed: int = 42
+) -> List[Dataset]:
+    import numpy as np
+    
+    np.random.seed(seed)
+    
+    # Get targets from dataset
+    if hasattr(trainset, "targets"):
+        targets = trainset.targets
+    elif hasattr(trainset, "labels"):
+        targets = trainset.labels
+    else:
+        raise AttributeError("Dataset must have 'targets' or 'labels' attribute.")
+    
+    if isinstance(targets, torch.Tensor):
+        targets = targets.numpy()
+    else:
+        targets = np.array(targets)
+    
+    num_classes = len(np.unique(targets))
+    num_samples = len(targets)
+    min_samples_per_partition = int(num_samples * min_size_ratio / num_partitions)
+    
+    print(f"Total samples: {num_samples}")
+    print(f"Minimum samples per partition: {min_samples_per_partition}")
+    
+    max_attempts = 10
+    for attempt in range(max_attempts):
+        client_proportions = np.random.dirichlet(alpha=[alpha] * num_partitions, size=num_classes)
+        
+        partition_sizes = np.zeros(num_partitions)
+        for class_id in range(num_classes):
+            class_indices = np.where(targets == class_id)[0]
+            proportions = client_proportions[class_id]
+            num_samples_per_client = (proportions * len(class_indices)).astype(int)
+            partition_sizes += num_samples_per_client
+        
+        if np.all(partition_sizes >= min_samples_per_partition):
+            break
+        print(f"Attempt {attempt + 1}: Regenerating distribution due to size constraint...")
+    
+    print(f"\nFinal Dirichlet distribution shape: {client_proportions.shape}")
+    print(f"Client proportions per class:")
+    for i in range(num_classes):
+        print(f"Class {i}: {client_proportions[i]}")
+    
+    partition_indices = [[] for _ in range(num_partitions)]
+    
+    for class_id in range(num_classes):
+        class_indices = np.where(targets == class_id)[0]
+        np.random.shuffle(class_indices)
+        
+        proportions = client_proportions[class_id]
+        num_samples_per_client = (proportions * len(class_indices)).astype(int)
+        
+        remaining = len(class_indices) - num_samples_per_client.sum()
+        if remaining > 0:
+            idx = np.argpartition(num_samples_per_client, remaining)[:remaining]
+            num_samples_per_client[idx] += 1
+        
+        start_idx = 0
+        for client_id, num_samples in enumerate(num_samples_per_client):
+            end_idx = start_idx + num_samples
+            partition_indices[client_id].extend(class_indices[start_idx:end_idx])
+            start_idx = end_idx
+    
+    partitions = []
+    for client_id, indices in enumerate(partition_indices):
+        partition = Subset(trainset, indices)
+        partitions.append(partition)
+        
+        # Debug: show label distribution per partition
+        part_targets = targets[indices]
+        dist = np.bincount(part_targets, minlength=num_classes)
+        print(f"\nClient {client_id}:")
+        print(f"Samples per class: {dist}")
+        print(f"Total samples: {sum(dist)}")
+        percentages = dist / sum(dist) * 100
+        print(f"Class distribution: {percentages.round(2)}%")
+    
+    return partitions
 
 import hashlib
 
