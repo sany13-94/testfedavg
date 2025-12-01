@@ -311,14 +311,7 @@ save_dir="feature_visualizations"
         return np.mean(np.stack(valid_protos), axis=0)
     
     def create_selection_matrix(self):
-        """
-        Create a matrix for heatmap visualization.
-        Rows: Clients, Columns: Rounds
-        Values: Prototype distance scores (0 if not selected)
         
-        Returns:
-            numpy.ndarray: Matrix of shape (num_clients, num_rounds)
-        """
         if not self.selection_history:
             print("Warning: No selection history available")
             return np.zeros((self.num_clients, 1))
@@ -337,18 +330,7 @@ save_dir="feature_visualizations"
         return matrix
 
     def _compute_and_log_scores_pairwise(self, round_num, selected_clients, all_prototypes_list):
-      """
-      Compute per-client prototype scores based on inter-client cosine distances.
-
-      For each selected client:
-      score = average( 1 - cosine(client_proto, other_client_proto) )
-
-      This measures how diverse the client's representation is compared to others
-      selected in the same round.
-
-      High score -> client brings domain-diverse information.
-      Low score  -> client is similar to others (redundant domain).
-      """
+      
       self.selection_history[round_num] = selected_clients
 
       # Convert prototypes to client-level vectors
