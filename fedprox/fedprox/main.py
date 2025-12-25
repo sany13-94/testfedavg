@@ -20,7 +20,10 @@ from fedprox.dataset import load_datasets
 from fedprox.utils import LabelDistributionVisualizer,visualize_class_domain_shift
 import mlflow
 from fedprox.strategy import GLOBAL_FEDAVG_STRATEGY_INSTANCE
-
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+from collections import defaultdict
 from  mlflow.tracking import MlflowClient
 import time
 import nest_asyncio
@@ -68,10 +71,73 @@ def prepare_image_for_display(img_tensor):
     else:  # Grayscale
         return img_np[0]
 
-import numpy as np
-import torch
-import matplotlib.pyplot as plt
-from collections import defaultdict
+
+
+#CAMYLON17 dataset
+def _to_img(x: torch.Tensor):
+    """x: (C,H,W) in torch; returns HxWxC numpy in [0,1] for display."""
+    x = x.detach().cpu()
+    x = x.float()
+    # If normalized, clip for visualization
+    x = x - x.min()
+    if x.max() > 0:
+        x = x / x.max()
+    x = x.clamp(0, 1)
+    if x.ndim == 3 and x.shape[0] in (1, 3):
+        x = x.permute(1, 2, 0).numpy()
+        if x.shape[2] == 1:
+            x = x[:, :, 0]
+    return x
+def visualize_patches_per_domain(trainloaders, domain_assignment, patches_per_domain=3, seed=0,
+                                title="Random patches per domain (hospital)"):
+    rng = np.random.default_rng(seed)
+
+    # group client ids by domain
+    domain_to_clients = defaultdict(list)
+    for cid, dom in enumerate(domain_assignment):
+        domain_to_clients[int(dom)].append(cid)
+
+    domains = sorted(domain_to_clients.keys())
+    rows = len(domains)
+    cols = patches_per_domain
+
+    fig, axes = plt.subplots(rows, cols, figsize=(3.2 * cols, 3.2 * rows))
+    if rows == 1:
+        axes = np.array([axes])
+    if cols == 1:
+        axes = axes.reshape(rows, 1)
+
+    for r, dom in enumerate(domains):
+        client_ids = domain_to_clients[dom]
+
+        # collect all non-empty datasets for this domain
+        candidates = []
+        for cid in client_ids:
+            ds = trainloaders[cid].dataset
+            if len(ds) > 0:
+                candidates.append((cid, ds))
+
+        for c in range(cols):
+            ax = axes[r, c]
+            if not candidates:
+                ax.set_title(f"domain_{dom}\nEMPTY")
+                ax.axis("off")
+                continue
+
+            # choose a random client in this domain, then a random sample
+            cid, ds = candidates[rng.integers(0, len(candidates))]
+            idx = rng.integers(0, len(ds))
+            x, y = ds[idx]
+
+            ax.imshow(_to_img(x))
+            if c == 0:
+                ax.set_ylabel(f"domain {dom}\nclients={client_ids}", fontsize=10)
+            ax.set_title(f"client_{cid} | y={int(y)}", fontsize=9)
+            ax.axis("off")
+
+    plt.suptitle(title, fontsize=14)
+    plt.tight_layout()
+    plt.show()
 
 def plot_pixel_intensities_per_domain(trainloaders, domain_assignment, samples_per_domain=6000, bins=100):
     # group client ids by domain/hospital
@@ -412,7 +478,7 @@ def main(cfg: DictConfig) -> None:
 
     #visualize_from_train_loaders(trainloaders, k=10, d=3, image_idx=0)
     plot_pixel_intensities_per_domain(trainloaders, domain_assignment, samples_per_domain=6000, bins=100)
-
+    visualize_patches_per_domain(trainloaders, domain_assignment, patches_per_domain=4, seed=123)
     #print(f'2: {valloaders[0]}')
     client_fn = gen_client_fn(
         num_clients=cfg.num_clients,

@@ -6,7 +6,7 @@ import torch
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader, random_split
 import os
-from fedprox.dataset_preparation import _partition_data, create_domain_shifted_loaders, DataSplitManager,make_pathmnist_clients_with_domains
+#from fedprox.dataset_preparation import _partition_data, create_domain_shifted_loaders, DataSplitManager,make_pathmnist_clients_with_domains
 
 
 def get_split_path(num_clients ,split_type: str,seed=42,domain_shift=False):
