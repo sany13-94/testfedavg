@@ -43,6 +43,7 @@ import numpy as np
 from typing import List
 from torch.utils.data import DataLoader
 import pandas as pd
+from fedprox.camylon17 import make_camelyon17_clients_with_domains
 from fedprox.visualizeprototypes import ClusterVisualizationForConfigureFit
 strategy="fedavg"
  # Create or get experiment
@@ -66,6 +67,56 @@ def prepare_image_for_display(img_tensor):
         return np.transpose(img_np, (1, 2, 0))
     else:  # Grayscale
         return img_np[0]
+
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+from collections import defaultdict
+
+def plot_pixel_intensities_per_domain(trainloaders, domain_assignment, samples_per_domain=6000, bins=100):
+    # group client ids by domain/hospital
+    domain_to_clients = defaultdict(list)
+    for cid, dom in enumerate(domain_assignment):
+        domain_to_clients[int(dom)].append(cid)
+
+    plt.figure(figsize=(12, 6))
+
+    for dom, client_ids in sorted(domain_to_clients.items()):
+        # collect sampled pixels across all clients in this domain
+        vals = []
+        remaining = samples_per_domain
+
+        for cid in client_ids:
+            ds = trainloaders[cid].dataset
+            if len(ds) == 0:
+                continue
+
+            # sample proportional chunks from each client
+            n = min(len(ds), max(1, remaining // max(1, len(client_ids))))
+            n = min(n, remaining)
+
+            idxs = np.random.choice(len(ds), size=n, replace=False)
+
+            for i in idxs:
+                x, _ = ds[i]
+                vals.append(x.flatten())
+
+            remaining -= n
+            if remaining <= 0:
+                break
+
+        if len(vals) == 0:
+            continue
+
+        vals = torch.cat(vals).float().cpu().numpy()
+        plt.hist(vals, bins=bins, density=True, alpha=0.45, label=f"domain_{dom} (clients={client_ids})")
+
+    plt.title("Pixel intensity distributions per domain/hospital (sampled)")
+    plt.xlabel("Pixel value")
+    plt.ylabel("Density")
+    plt.legend(fontsize=9)
+    plt.tight_layout()
+    plt.show()
 
 def visualize_client_participation(participation_dict, save_path="participation_chart.png", 
                                    method_name="FedProto-Fair"):
@@ -360,7 +411,8 @@ def main(cfg: DictConfig) -> None:
     trainloaders, valloaders,domain_assignment=data_load(cfg)
 
     #visualize_from_train_loaders(trainloaders, k=10, d=3, image_idx=0)
-     
+    plot_pixel_intensities_per_domain(trainloaders, domain_assignment, samples_per_domain=6000, bins=100)
+
     #print(f'2: {valloaders[0]}')
     client_fn = gen_client_fn(
         num_clients=cfg.num_clients,
@@ -413,12 +465,25 @@ def main(cfg: DictConfig) -> None:
       
     
 def data_load(cfg: DictConfig):
+  """
   trainloaders, valloaders,domain_assignment = load_datasets(
         config=cfg.dataset_config,
         num_clients=cfg.num_clients,
         batch_size=cfg.batch_size,
         domain_shift=True
     )
+  """
+  
+  trainloaders, valloaders, domain_assignment = make_camelyon17_clients_with_domains(
+        num_clients=5,
+        batch_size=cfg.batch_size,
+        root_dir=cfg.dataset_config.root_dir if "root_dir" in cfg.dataset_config else "./data",
+        domain_shift=True,  # same as your pipeline
+        heldout_center=getattr(cfg.dataset_config, "heldout_center", None),
+        split_each_center_into=getattr(cfg.dataset_config, "split_each_center_into", None),
+        seed=getattr(cfg.dataset_config, "seed", 42),
+    )
+
   print(f'1: {valloaders[0]}')
   return trainloaders, valloaders ,domain_assignment 
 if __name__ == "__main__":
